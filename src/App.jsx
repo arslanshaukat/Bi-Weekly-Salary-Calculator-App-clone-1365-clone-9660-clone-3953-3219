@@ -2,11 +2,10 @@ import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-
 import Header from './components/Header';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { isSupabaseConfigured } from './supabase.js';
 import SafeIcon from './common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
@@ -16,7 +15,7 @@ import PublicPulse from './components/common/PublicPulse';
 import ActivityWatcher from './components/common/ActivityWatcher';
 import './App.css';
 
-// Lazy load components for performance
+// Lazy load components
 const EmployeeForm = lazy(() => import('./components/EmployeeForm'));
 const CalculationResults = lazy(() => import('./components/CalculationResults'));
 const EmployeeList = lazy(() => import('./components/EmployeeList'));
@@ -28,6 +27,15 @@ const UserProfile = lazy(() => import('./components/UserProfile'));
 const FinancialSummary = lazy(() => import('./components/FinancialSummary'));
 
 const { FiAlertTriangle } = FiIcons;
+
+// Component to handle redirection for restricted users like Mel
+const RootRedirect = () => {
+  const { user } = useAuth();
+  if (user?.email === 'gtsubic@gmail.com') {
+    return <Navigate to="/attendance" replace />;
+  }
+  return <ProtectedRoute><EmployeeList /></ProtectedRoute>;
+};
 
 function App() {
   return (
@@ -47,7 +55,7 @@ function App() {
           )}
 
           <Header />
-          
+
           <main className="container mx-auto px-4 py-8 flex-grow">
             <Suspense fallback={<Loading />}>
               <Routes>
@@ -56,14 +64,46 @@ function App() {
                 <Route path="/login" element={<Login />} />
 
                 {/* Protected Routes */}
-                <Route path="/" element={<ProtectedRoute><EmployeeList /></ProtectedRoute>} />
-                <Route path="/calculate" element={<ProtectedRoute><EmployeeForm /></ProtectedRoute>} />
-                <Route path="/results" element={<ProtectedRoute><CalculationResults /></ProtectedRoute>} />
-                <Route path="/attendance" element={<ProtectedRoute><AttendanceTracker /></ProtectedRoute>} />
-                <Route path="/employee/:employeeId" element={<ProtectedRoute><EmployeeDetail /></ProtectedRoute>} />
-                <Route path="/results/:payRecordId" element={<ProtectedRoute><PayslipDetail /></ProtectedRoute>} />
+                <Route path="/" element={<RootRedirect />} />
+                
+                <Route path="/calculate" element={
+                  <ProtectedRoute requirePermission="manage_payroll">
+                    <EmployeeForm />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/results" element={
+                  <ProtectedRoute requirePermission="manage_payroll">
+                    <CalculationResults />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/attendance" element={
+                  <ProtectedRoute requirePermission="manage_attendance">
+                    <AttendanceTracker />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/employee/:employeeId" element={
+                  <ProtectedRoute requirePermission="manage_employees">
+                    <EmployeeDetail />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/results/:payRecordId" element={
+                  <ProtectedRoute requirePermission="manage_payroll">
+                    <PayslipDetail />
+                  </ProtectedRoute>
+                } />
+                
                 <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
-                <Route path="/summary" element={<ProtectedRoute><FinancialSummary /></ProtectedRoute>} />
+                
+                <Route path="/summary" element={
+                  <ProtectedRoute requirePermission="manage_payroll">
+                    <FinancialSummary />
+                  </ProtectedRoute>
+                } />
+                
                 <Route path="/users" element={<ProtectedRoute requireAdmin={true}><UserManagement /></ProtectedRoute>} />
 
                 {/* Catch-all redirect to dashboard */}
@@ -72,13 +112,7 @@ function App() {
             </Suspense>
           </main>
 
-          <ToastContainer 
-            position="top-right" 
-            autoClose={3000} 
-            theme="colored" 
-            pauseOnHover 
-            closeOnClick 
-          />
+          <ToastContainer position="top-right" autoClose={3000} theme="colored" pauseOnHover closeOnClick />
         </div>
       </Router>
     </AuthProvider>

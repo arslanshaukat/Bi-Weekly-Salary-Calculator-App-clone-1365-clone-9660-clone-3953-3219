@@ -4,10 +4,10 @@ import { useAuth } from '../context/AuthContext';
 import SafeIcon from '../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 
-const { FiLoader } = FiIcons;
+const { FiLoader, FiShield } = FiIcons;
 
-const ProtectedRoute = ({ children, requireAdmin = false }) => {
-  const { user, isAdmin, loading } = useAuth();
+const ProtectedRoute = ({ children, requireAdmin = false, requirePermission = null }) => {
+  const { user, isAdmin, profile, loading, checkPermission } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -25,24 +25,29 @@ const ProtectedRoute = ({ children, requireAdmin = false }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (requireAdmin && !isAdmin) {
+  // Check specific permission if required
+  if (requirePermission && !checkPermission(requirePermission)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full text-center">
-          <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <SafeIcon icon={FiIcons.FiShield} className="text-red-600 text-3xl" />
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full text-center border border-gray-100">
+          <div className="bg-red-50 w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-4">
+            <SafeIcon icon={FiShield} className="text-red-600 text-3xl" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Access Denied</h2>
-          <p className="text-gray-600 mb-6">You do not have permission to view this page. This area is restricted to administrators.</p>
+          <h2 className="text-2xl font-black text-gray-800 mb-2 uppercase tracking-tight">Access Denied</h2>
+          <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-6">Insufficient Clearance Level</p>
           <button 
-            onClick={() => window.history.back()}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            onClick={() => window.history.back()} 
+            className="bg-gray-900 text-white px-8 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-black transition-all"
           >
             Go Back
           </button>
         </div>
       </div>
     );
+  }
+
+  if (requireAdmin && !isAdmin) {
+    return <Navigate to="/" replace />;
   }
 
   return children;

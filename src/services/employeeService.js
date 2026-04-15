@@ -3,6 +3,31 @@ import { getHoliday } from '../utils/holidays';
 
 const inFlightRequests = new Map();
 
+// Helper constants for time calculations (in minutes from midnight)
+const SHIFT_START = 8 * 60;   // 08:00
+const LUNCH_START = 12 * 60;  // 12:00
+const LUNCH_END = 13 * 60;    // 13:00
+const SHIFT_END = 17 * 60;    // 17:00
+
+/**
+ * Calculates minutes lost between two points in time, excluding the 12-1 lunch hour.
+ */
+const calculateMinutesExcludingLunch = (startMins, endMins) => {
+  if (startMins >= endMins) return 0;
+  
+  let totalMinutes = endMins - startMins;
+  
+  // Calculate overlap with lunch (12:00 - 13:00)
+  const overlapStart = Math.max(startMins, LUNCH_START);
+  const overlapEnd = Math.min(endMins, LUNCH_END);
+  
+  if (overlapStart < overlapEnd) {
+    totalMinutes -= (overlapEnd - overlapStart);
+  }
+  
+  return Math.max(0, totalMinutes);
+};
+
 export const employeeService = {
   async deduplicate(key, fetcher) {
     if (inFlightRequests.has(key)) return inFlightRequests.get(key);
@@ -23,7 +48,7 @@ export const employeeService = {
     return data[0];
   },
 
-  async getEmployees(columns = 'id,employee_id,name,department,position,daily_salary,is_active,employee_type') {
+  async getEmployees(columns = 'id, employee_id, name, department, position, daily_salary, is_active, employee_type') {
     return this.deduplicate(`list-${columns}`, async () => {
       const { data, error } = await supabase.from('employees').select(columns).order('name', { ascending: true });
       if (error) throw error;
@@ -33,7 +58,7 @@ export const employeeService = {
 
   async getEmployeeBasicInfo() {
     return this.deduplicate('basic-info', async () => {
-      const { data, error } = await supabase.from('employees').select('id,name,position,daily_salary,employee_type').eq('is_active', true).order('name', { ascending: true });
+      const { data, error } = await supabase.from('employees').select('id, name, position, daily_salary, employee_type').eq('is_active', true).order('name', { ascending: true });
       if (error) throw error;
       return data;
     });
@@ -75,6 +100,7 @@ export const employeeService = {
   async createPayRecord(payData, deductionIds = []) {
     const { data: record, error: recordError } = await supabase.from('pay_records').insert([payData]).select().single();
     if (recordError) throw recordError;
+    
     if (deductionIds.length > 0) {
       const { error: updateError } = await supabase
         .from('employee_deductions')
@@ -104,7 +130,11 @@ export const employeeService = {
 
   async getPayRecordsWithEmployees(limit = 1000) {
     const { data, error } = await supabase.from('pay_records').select(`
-      id, pay_period, start_date, end_date, net_pay, employee_id, sss_contribution, philhealth_contribution, pagibig_contribution, thirteenth_month, basic_salary, overtime_hours, overtime_pay, late_deduction, undertime_deduction, reg_holiday_pay, spec_holiday_pay, holiday_pay, allowances, allowance_description, cash_advance, food_allowance, other_deductions, days_present, late_minutes, undertime_minutes, created_at,
+      id, pay_period, start_date, end_date, net_pay, employee_id, sss_contribution, 
+      philhealth_contribution, pagibig_contribution, thirteenth_month, thirteenth_month_days, basic_salary, 
+      overtime_hours, overtime_pay, late_deduction, undertime_deduction, reg_holiday_pay, 
+      spec_holiday_pay, holiday_pay, allowances, allowance_description, cash_advance, 
+      food_allowance, other_deductions, days_present, late_minutes, undertime_minutes, created_at,
       employees (name, position, department, employee_id, employee_type, daily_salary)
     `).order('start_date', { ascending: false }).limit(limit);
     if (error) throw error;
@@ -124,12 +154,13 @@ export const employeeService = {
   },
 
   async createAttendance(data) {
-    const { error } = await supabase.from('attendance').upsert(data, { onConflict: 'employee_id,date' });
+    const { error } = await supabase.from('attendance').upsert({ ...data, modified_at: new Date().toISOString() }, { onConflict: 'employee_id, date' });
     if (error) throw error;
   },
 
   async bulkCreateAttendance(records) {
-    const { error } = await supabase.from('attendance').upsert(records, { onConflict: 'employee_id,date' });
+    const timestampedRecords = records.map(r => ({ ...r, modified_at: new Date().toISOString() }));
+    const { error } = await supabase.from('attendance').upsert(timestampedRecords, { onConflict: 'employee_id, date' });
     if (error) throw error;
   },
 
@@ -161,32 +192,31 @@ export const employeeService = {
       totalRecords: attendance.length
     };
 
-    const SHIFT_START_MINS = (8 * 60);
-    const SHIFT_END_MINS = (17 * 60);
-    const NOON_MINS = (12 * 60);
-
     attendance.forEach(log => {
       const holiday = getHoliday(log.date);
       const isPresent = ['present', 'late', 'holiday', 'undertime'].includes(log.status);
       let dayWeight = 1.0;
-      let dayLateMinutes = (log.late_minutes || 0);
       let checkinMins = 0;
+      let checkoutMins = 0;
 
       if (log.check_in_time && isPresent) {
         const [h, m] = log.check_in_time.split(':').map(Number);
         checkinMins = (h * 60) + m;
-        if (checkinMins >= NOON_MINS) {
+        
+        // Weight Adjustment for Half Days
+        if (checkinMins >= LUNCH_START) {
           dayWeight = 0.5;
-          dayLateMinutes = 0;
-        }
-        if (checkinMins < SHIFT_START_MINS) {
-          stats.totalOvertimeMinutes += (SHIFT_START_MINS - checkinMins);
         }
       }
 
-      const isHalfDay = checkinMins >= NOON_MINS;
-      const undertimeMins = (log.undertime_minutes || 0);
-      const isEligibleFor13th = isPresent && !isHalfDay && undertimeMins < 240;
+      if (log.check_out_time && isPresent) {
+        const [h, m] = log.check_out_time.split(':').map(Number);
+        checkoutMins = (h * 60) + m;
+      }
+
+      // 13th Month Eligibility
+      // Criteria: Present, Not a afternoon-only half day, and total undertime < 4 hours
+      const isEligibleFor13th = isPresent && checkinMins < LUNCH_START && (log.undertime_minutes || 0) < 240;
 
       if (holiday) {
         if (holiday.type === 'regular') {
@@ -202,15 +232,15 @@ export const employeeService = {
         stats.thirteenthMonthDays++;
       }
 
-      stats.totalLateMinutes += dayLateMinutes;
-      stats.totalUndertimeMinutes += undertimeMins;
-
-      if (log.check_out_time && isPresent) {
-        const [h, m] = log.check_out_time.split(':').map(Number);
-        const checkoutTotal = (h * 60) + m;
-        if (checkoutTotal > SHIFT_END_MINS) {
-          stats.totalOvertimeMinutes += (checkoutTotal - SHIFT_END_MINS);
-        }
+      // Late & Undertime (Logic already factors lunch if calculated via calculateMinutesExcludingLunch)
+      // Since logs now store pre-calculated lunch-excluded minutes, we just sum them.
+      stats.totalLateMinutes += (log.late_minutes || 0);
+      stats.totalUndertimeMinutes += (log.undertime_minutes || 0);
+      
+      // Overtime Calculation
+      if (isPresent) {
+        if (checkinMins < SHIFT_START) stats.totalOvertimeMinutes += (SHIFT_START - checkinMins);
+        if (checkoutMins > SHIFT_END) stats.totalOvertimeMinutes += (checkoutMins - SHIFT_END);
       }
     });
 

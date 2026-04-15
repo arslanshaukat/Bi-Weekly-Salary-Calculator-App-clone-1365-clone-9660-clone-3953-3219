@@ -6,8 +6,9 @@ import { employeeService } from '../services/employeeService';
 import { supabase } from '../supabase.js';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
+import { motion, AnimatePresence } from 'framer-motion';
 
-const { FiUsers, FiPlus, FiEdit, FiTrash2, FiSearch, FiCalendar, FiLock, FiArrowRight } = FiIcons;
+const { FiUsers, FiPlus, FiEdit, FiTrash2, FiSearch, FiCalendar, FiLock, FiArrowRight, FiX, FiShield, FiAlertTriangle } = FiIcons;
 
 const EmployeeList = () => {
   const [employees, setEmployees] = useState([]);
@@ -16,6 +17,12 @@ const EmployeeList = () => {
   const { checkPermission } = useAuth();
   const navigate = useNavigate();
   const reloadTimeout = useRef(null);
+
+  // Security Modal State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [employeeToDelete, setEmployeeToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadEmployees = useCallback(async (isInitial = false) => {
     if (isInitial) setLoading(true);
@@ -45,15 +52,34 @@ const EmployeeList = () => {
     };
   }, [loadEmployees]);
 
-  const handleDeleteEmployee = async (id) => {
+  const initiateDelete = (employee) => {
     if (!checkPermission('delete_employees')) return toast.error('Access denied');
-    if (!window.confirm('Are you sure? This deletes ALL records for this employee.')) return;
+    setEmployeeToDelete(employee);
+    setDeletePassword('');
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async (e) => {
+    e.preventDefault();
+    
+    if (deletePassword !== 'Subic@123') {
+      toast.error('Incorrect authorization password');
+      return;
+    }
+
+    if (!employeeToDelete) return;
+
+    setIsDeleting(true);
     try {
-      await employeeService.deleteEmployee(id);
-      setEmployees(prev => prev.filter(e => e.id !== id));
-      toast.success('Employee removed');
+      await employeeService.deleteEmployee(employeeToDelete.id);
+      setEmployees(prev => prev.filter(e => e.id !== employeeToDelete.id));
+      toast.success(`${employeeToDelete.name} has been removed from registry`);
+      setIsDeleteModalOpen(false);
+      setEmployeeToDelete(null);
     } catch (error) {
-      toast.error('Delete failed');
+      toast.error('System failed to execute deletion');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -94,9 +120,16 @@ const EmployeeList = () => {
             </div>
           )}
         </div>
+
         <div className="relative">
           <SafeIcon icon={FiSearch} className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400 text-lg" />
-          <input type="text" placeholder="Search by name or employee ID..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-14 pr-6 py-4.5 bg-gray-50 border border-transparent focus:border-blue-200 focus:bg-white rounded-2xl font-bold text-gray-800 transition-all outline-none shadow-inner" />
+          <input 
+            type="text" 
+            placeholder="Search by name or employee ID..." 
+            value={searchTerm} 
+            onChange={(e) => setSearchTerm(e.target.value)} 
+            className="w-full pl-14 pr-6 py-4.5 bg-gray-50 border border-transparent focus:border-blue-200 focus:bg-white rounded-2xl font-bold text-gray-800 transition-all outline-none shadow-inner" 
+          />
         </div>
       </div>
 
@@ -119,12 +152,15 @@ const EmployeeList = () => {
                 <Link to="/calculate" state={{ employee: emp, isEditEmployee: true }} className="p-2.5 text-orange-500 hover:bg-orange-50 rounded-xl transition-all">
                   <SafeIcon icon={FiEdit} />
                 </Link>
-                <button onClick={() => handleDeleteEmployee(emp.id)} className="p-2.5 text-red-500 hover:bg-red-50 rounded-xl transition-all">
+                <button 
+                  onClick={() => initiateDelete(emp)} 
+                  className="p-2.5 text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                >
                   <SafeIcon icon={FiTrash2} />
                 </button>
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4 mb-6 text-left">
               <div className="bg-gray-50 p-3.5 rounded-2xl">
                 <p className="text-[8px] font-black text-gray-400 uppercase mb-1 tracking-widest">Daily Rate</p>
@@ -147,12 +183,93 @@ const EmployeeList = () => {
             </div>
           </div>
         ))}
+
         {filteredEmployees.length === 0 && (
           <div className="col-span-full py-20 bg-white rounded-[2rem] border-2 border-dashed border-gray-100 text-gray-300 font-black uppercase tracking-widest text-center italic">
             No matching personnel found
           </div>
         )}
       </div>
+
+      {/* Security Deletion Modal */}
+      <AnimatePresence>
+        {isDeleteModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              onClick={() => setIsDeleteModalOpen(false)} 
+              className="absolute inset-0 bg-gray-900/80 backdrop-blur-md" 
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }} 
+              animate={{ scale: 1, opacity: 1, y: 0 }} 
+              exit={{ scale: 0.9, opacity: 0, y: 20 }} 
+              className="relative bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden"
+            >
+              <div className="bg-red-600 p-8 text-white text-center">
+                <div className="bg-white/20 w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
+                  <SafeIcon icon={FiShield} className="text-3xl" />
+                </div>
+                <h3 className="text-xl font-black uppercase tracking-tight">Security Authorization</h3>
+                <p className="text-red-100 text-[10px] font-black uppercase tracking-widest mt-1">High-Level Data Integrity Protocol</p>
+              </div>
+
+              <div className="p-8">
+                <div className="bg-red-50 p-4 rounded-2xl border border-red-100 flex items-start space-x-3 mb-6">
+                  <SafeIcon icon={FiAlertTriangle} className="text-red-500 mt-0.5 shrink-0" />
+                  <div className="text-left">
+                    <p className="text-[10px] font-black text-red-800 uppercase leading-tight mb-1">Permanent Deletion</p>
+                    <p className="text-[10px] text-red-600 font-bold leading-relaxed">
+                      You are about to purge <strong>{employeeToDelete?.name}</strong>. This will also erase all attendance logs and payroll history.
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleConfirmDelete} className="space-y-4 text-left">
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Admin Password Required</label>
+                    <input 
+                      type="password" 
+                      value={deletePassword} 
+                      onChange={(e) => setDeletePassword(e.target.value)} 
+                      placeholder="••••••••" 
+                      className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-red-500 focus:bg-white rounded-2xl font-black transition-all outline-none"
+                      required
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button 
+                      type="button" 
+                      onClick={() => setIsDeleteModalOpen(false)} 
+                      className="flex-1 py-4 bg-gray-100 text-gray-500 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-gray-200 transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      type="submit" 
+                      disabled={isDeleting}
+                      className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black shadow-xl shadow-red-100 uppercase text-[10px] tracking-widest flex items-center justify-center space-x-2 active:scale-95 transition-all"
+                    >
+                      {isDeleting ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <SafeIcon icon={FiTrash2} />
+                          <span>Authorize Purge</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

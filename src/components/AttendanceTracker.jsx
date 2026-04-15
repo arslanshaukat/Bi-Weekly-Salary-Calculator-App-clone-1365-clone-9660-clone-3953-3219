@@ -3,25 +3,21 @@ import SafeIcon from '../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 import { employeeService } from '../services/employeeService';
 import { getHoliday } from '../utils/holidays';
+import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 
-const { 
-  FiChevronLeft, 
-  FiChevronRight, 
-  FiCalendar, 
-  FiX, 
-  FiClock, 
-  FiEdit2, 
-  FiTrash2, 
-  FiList, 
-  FiGift, 
-  FiZap, 
-  FiTrash 
-} = FiIcons;
+const { FiChevronLeft, FiChevronRight, FiCalendar, FiX, FiClock, FiEdit2, FiTrash2, FiList, FiGift, FiZap, FiTrash, FiShield } = FiIcons;
+
+// Time Constants (Minutes from Midnight)
+const SHIFT_START = 8 * 60;   // 08:00
+const LUNCH_START = 12 * 60;  // 12:00
+const LUNCH_END = 13 * 60;    // 13:00
+const SHIFT_END = 17 * 60;    // 17:00
 
 const AttendanceTracker = () => {
+  const { profile, checkPermission } = useAuth();
   const [employees, setEmployees] = useState([]);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -29,11 +25,9 @@ const AttendanceTracker = () => {
   const [loading, setLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingLog, setEditingLog] = useState(null);
-  const [editForm, setEditForm] = useState({
-    check_in_time: '',
-    check_out_time: '',
-    status: 'present'
-  });
+  const [editForm, setEditForm] = useState({ check_in_time: '', check_out_time: '', status: 'present' });
+
+  const currentUserName = profile?.full_name || 'System';
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -66,8 +60,19 @@ const AttendanceTracker = () => {
     loadAttendance();
   }, [loadAttendance]);
 
+  const calculateMinutesExcludingLunch = (startMins, endMins) => {
+    if (startMins >= endMins) return 0;
+    let total = endMins - startMins;
+    const overlapStart = Math.max(startMins, LUNCH_START);
+    const overlapEnd = Math.min(endMins, LUNCH_END);
+    if (overlapStart < overlapEnd) total -= (overlapEnd - overlapStart);
+    return Math.max(0, total);
+  };
+
   const handleAutoFill = async () => {
     if (!selectedEmployee) return;
+    if (!checkPermission('manage_attendance')) return toast.error('Access denied');
+    
     const today = new Date();
     const weekStart = startOfWeek(today, { weekStartsOn: 1 });
     const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
@@ -76,7 +81,7 @@ const AttendanceTracker = () => {
 
     const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
     const newRecords = days
-      .filter(day => day.getDay() !== 0) // No Sundays
+      .filter(day => day.getDay() !== 0) // Skip Sundays
       .map(day => {
         const dateStr = format(day, 'yyyy-MM-dd');
         if (attendance.some(a => a.date === dateStr)) return null;
@@ -89,7 +94,8 @@ const AttendanceTracker = () => {
           check_out_time: '17:00',
           late_minutes: 0,
           undertime_minutes: 0,
-          overtime_hours: 0
+          overtime_hours: 0,
+          modified_by_name: currentUserName
         };
       })
       .filter(Boolean);
@@ -110,7 +116,9 @@ const AttendanceTracker = () => {
 
   const handleBulkDelete = async () => {
     if (!selectedEmployee) return;
+    if (!checkPermission('manage_attendance')) return toast.error('Access denied');
     if (!window.confirm(`PERMANENTLY DELETE ALL logs for ${format(currentMonth, 'MMMM')}?`)) return;
+
     const start = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
     const end = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
     try {
@@ -132,6 +140,7 @@ const AttendanceTracker = () => {
   }, [currentMonth]);
 
   const handleStatusChange = async (date, status) => {
+    if (!checkPermission('manage_attendance')) return toast.error('Access denied');
     const dateStr = typeof date === 'string' ? date : format(date, 'yyyy-MM-dd');
     const data = {
       employee_id: selectedEmployee.id,
@@ -141,7 +150,8 @@ const AttendanceTracker = () => {
       check_out_time: status !== 'absent' ? '17:00' : null,
       late_minutes: 0,
       undertime_minutes: 0,
-      overtime_hours: 0
+      overtime_hours: 0,
+      modified_by_name: currentUserName
     };
     try {
       await employeeService.createAttendance(data);
@@ -153,6 +163,7 @@ const AttendanceTracker = () => {
   };
 
   const openEditModal = (log) => {
+    if (!checkPermission('manage_attendance')) return toast.error('Access denied');
     setEditingLog(log);
     setEditForm({
       check_in_time: log.check_in_time?.slice(0, 5) || '08:00',
@@ -164,25 +175,29 @@ const AttendanceTracker = () => {
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
-    const SHIFT_START_MINS = (8 * 60);
-    const SHIFT_END_MINS = (17 * 60);
-
     const [inH, inM] = editForm.check_in_time.split(':').map(Number);
     const checkinMins = (inH * 60) + inM;
     const [outH, outM] = editForm.check_out_time.split(':').map(Number);
     const checkoutMins = (outH * 60) + outM;
 
-    const lateMins = (checkinMins > SHIFT_START_MINS) ? (checkinMins - SHIFT_START_MINS) : 0;
-    const undertimeMins = (checkoutMins < SHIFT_END_MINS && editForm.status !== 'absent' && editForm.status !== 'holiday') ? (SHIFT_END_MINS - checkoutMins) : 0;
+    // LATE CALCULATION (8:00 to actual arrival, excluding 12-1 lunch)
+    const lateMinutes = (checkinMins > SHIFT_START) 
+      ? calculateMinutesExcludingLunch(SHIFT_START, checkinMins) 
+      : 0;
+
+    // UNDERTIME CALCULATION (actual departure to 17:00, excluding 12-1 lunch)
+    const undertimeMinutes = (checkoutMins < SHIFT_END && editForm.status !== 'absent' && editForm.status !== 'holiday') 
+      ? calculateMinutesExcludingLunch(checkoutMins, SHIFT_END) 
+      : 0;
 
     let totalOTMins = 0;
-    if (checkinMins < SHIFT_START_MINS) totalOTMins += (SHIFT_START_MINS - checkinMins);
-    if (checkoutMins > SHIFT_END_MINS) totalOTMins += (checkoutMins - SHIFT_END_MINS);
+    if (checkinMins < SHIFT_START) totalOTMins += (SHIFT_START - checkinMins);
+    if (checkoutMins > SHIFT_END) totalOTMins += (checkoutMins - SHIFT_END);
 
     let finalStatus = editForm.status;
     if (['present', 'late', 'undertime'].includes(finalStatus)) {
-      if (lateMins > 0) finalStatus = 'late';
-      else if (undertimeMins > 0) finalStatus = 'undertime';
+      if (lateMinutes > 0) finalStatus = 'late';
+      else if (undertimeMinutes > 0) finalStatus = 'undertime';
       else finalStatus = 'present';
     }
 
@@ -193,16 +208,17 @@ const AttendanceTracker = () => {
       status: finalStatus,
       check_in_time: editForm.check_in_time,
       check_out_time: editForm.check_out_time,
-      late_minutes: lateMins,
-      undertime_minutes: undertimeMins,
-      overtime_hours: Math.round((totalOTMins / 60) * 100) / 100
+      late_minutes: lateMinutes,
+      undertime_minutes: undertimeMinutes,
+      overtime_hours: Math.round((totalOTMins / 60) * 100) / 100,
+      modified_by_name: currentUserName
     };
 
     try {
       await employeeService.createAttendance(data);
       loadAttendance();
       setIsEditModalOpen(false);
-      toast.success('Record Updated');
+      toast.success('Record Updated (Lunch Excluded)');
     } catch (error) {
       toast.error('Failed to save');
     }
@@ -229,7 +245,7 @@ const AttendanceTracker = () => {
             <div className="bg-blue-600 p-3 rounded-2xl shadow-lg"><SafeIcon icon={FiCalendar} className="text-white text-2xl" /></div>
             <div>
               <h1 className="text-xl md:text-2xl font-black text-gray-800 uppercase tracking-tight">Attendance Vault</h1>
-              <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">{selectedEmployee?.name} • {format(currentMonth, 'yyyy')}</p>
+              <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">{selectedEmployee?.name} • Lunch (12-1) Excluded</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -239,11 +255,7 @@ const AttendanceTracker = () => {
             <button onClick={handleBulkDelete} className="flex-1 md:flex-none px-3 py-2.5 bg-red-50 text-red-600 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center justify-center border border-red-100 hover:bg-red-100 transition-colors">
               <SafeIcon icon={FiTrash} className="mr-1.5" /> Clear Month
             </button>
-            <select 
-              value={selectedEmployee?.id || ''} 
-              onChange={(e) => setSelectedEmployee(employees.find(emp => emp.id === e.target.value))}
-              className="w-full md:w-auto p-2.5 border rounded-xl bg-gray-50 text-[10px] font-black uppercase tracking-widest outline-none focus:ring-2 focus:ring-blue-500"
-            >
+            <select value={selectedEmployee?.id || ''} onChange={(e) => setSelectedEmployee(employees.find(emp => emp.id === e.target.value))} className="w-full md:w-auto p-2.5 border rounded-xl bg-gray-50 text-[10px] font-black uppercase tracking-widest outline-none focus:ring-2 focus:ring-blue-500">
               {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
             </select>
           </div>
@@ -265,7 +277,6 @@ const AttendanceTracker = () => {
               const record = attendance.find(a => a.date === dateStr);
               const isCurrentMonth = isSameMonth(day, calendarData.monthStart);
               const holiday = getHoliday(dateStr);
-              
               return (
                 <div key={idx} className={`min-h-[110px] md:min-h-[130px] p-2 transition-all relative ${!isCurrentMonth ? 'bg-gray-50/50 opacity-30' : 'bg-white hover:bg-blue-50/30 cursor-pointer'}`}>
                   <div className="flex justify-between items-start mb-2">
@@ -277,7 +288,9 @@ const AttendanceTracker = () => {
                       {record ? (
                         <>
                           <span className={`block text-[8px] font-black uppercase px-2 py-1 rounded-lg text-center border truncate ${getStatusStyle(record.status)}`}>{record.status}</span>
-                          {record.undertime_minutes > 0 && <span className="block text-[7px] font-black text-orange-600 text-center uppercase">-{record.undertime_minutes}m UT</span>}
+                          {(record.late_minutes > 0 || record.undertime_minutes > 0) && (
+                            <span className="block text-[7px] font-black text-red-600 text-center uppercase">-{record.late_minutes + record.undertime_minutes}m Lost</span>
+                          )}
                           <button onClick={() => openEditModal(record)} className="w-full mt-1.5 p-1 text-[8px] font-black text-blue-600 hover:bg-blue-50 rounded-lg transition-colors uppercase">Edit</button>
                         </>
                       ) : (
@@ -294,8 +307,7 @@ const AttendanceTracker = () => {
 
       <div className="bg-white rounded-3xl shadow-xl overflow-hidden text-left border border-gray-100">
         <div className="p-6 border-b border-gray-50 flex items-center justify-between bg-gray-50/50">
-          <h3 className="text-xs md:text-sm font-black text-gray-800 uppercase tracking-widest flex items-center"><SafeIcon icon={FiList} className="mr-2 text-blue-600" /> Activity Log</h3>
-          <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-full">{attendance.length} Logs</span>
+          <h3 className="text-xs md:text-sm font-black text-gray-800 uppercase tracking-widest flex items-center"><SafeIcon icon={FiList} className="mr-2 text-blue-600" /> Activity Audit (Lunch Hours Deducted)</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -304,33 +316,60 @@ const AttendanceTracker = () => {
                 <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-left">Date</th>
                 <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-left">Status</th>
                 <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">In/Out</th>
-                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Mins Lost</th>
-                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right whitespace-nowrap">Actions</th>
+                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Mins Lost</th>
+                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">OT Mins</th>
+                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-left">Last Modified</th>
+                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {attendance.map(log => (
-                <tr key={log.id} className="hover:bg-blue-50/30 transition-colors group">
-                  <td className="px-6 py-4 font-black text-xs md:text-sm text-gray-800">{format(parseISO(log.date), 'EEE, MMM dd')}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-lg text-[8px] md:text-[9px] font-black uppercase border ${getStatusStyle(log.status)}`}>{log.status}</span>
-                  </td>
-                  <td className="px-6 py-4 text-center font-mono text-[10px] md:text-xs font-bold text-gray-600">{log.check_in_time?.slice(0, 5)} - {log.check_out_time?.slice(0, 5)}</td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex flex-col items-end space-y-1">
-                      {log.late_minutes > 0 && <span className="text-[9px] font-black text-yellow-600">Late: {log.late_minutes}m</span>}
-                      {log.undertime_minutes > 0 && <span className="text-[9px] font-black text-orange-600">UT: {log.undertime_minutes}m</span>}
-                      {log.late_minutes === 0 && log.undertime_minutes === 0 && <span className="text-[9px] text-gray-300">—</span>}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end items-center space-x-1">
-                      <button onClick={() => openEditModal(log)} className="p-2 text-blue-600 hover:bg-blue-100 rounded-xl transition-all"><SafeIcon icon={FiEdit2} /></button>
-                      <button onClick={() => { if(window.confirm('Delete log?')) employeeService.deleteAttendance(log.id).then(loadAttendance) }} className="p-2 text-red-500 hover:bg-red-100 rounded-xl transition-all"><SafeIcon icon={FiTrash2} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {attendance.map(log => {
+                const totalMinsLost = (log.late_minutes || 0) + (log.undertime_minutes || 0);
+                const otMinutes = Math.round((Number(log.overtime_hours) || 0) * 60);
+                return (
+                  <tr key={log.id} className="hover:bg-blue-50/30 transition-colors group">
+                    <td className="px-6 py-4 font-black text-xs md:text-sm text-gray-800">{format(parseISO(log.date), 'EEE, MMM dd')}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-1 rounded-lg text-[8px] md:text-[9px] font-black uppercase border ${getStatusStyle(log.status)}`}>{log.status}</span>
+                    </td>
+                    <td className="px-6 py-4 text-center font-mono text-[10px] md:text-xs font-bold text-gray-600">{log.check_in_time?.slice(0, 5)} - {log.check_out_time?.slice(0, 5)}</td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex flex-col items-center">
+                        <span className={`text-[10px] font-black ${totalMinsLost > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                          {totalMinsLost}m
+                        </span>
+                        {totalMinsLost > 0 && (
+                          <div className="flex gap-1 mt-0.5">
+                            {log.late_minutes > 0 && <span className="text-[7px] bg-red-50 text-red-500 px-1 rounded font-bold uppercase">L:{log.late_minutes}</span>}
+                            {log.undertime_minutes > 0 && <span className="text-[7px] bg-orange-50 text-orange-500 px-1 rounded font-bold uppercase">U:{log.undertime_minutes}</span>}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`text-[10px] font-black ${otMinutes > 0 ? 'text-green-600' : 'text-gray-300'}`}>
+                        {otMinutes > 0 ? `+${otMinutes}m` : '0m'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col items-start space-y-0.5">
+                        <span className="text-[9px] font-black text-blue-600 uppercase flex items-center">
+                          <SafeIcon icon={FiShield} className="mr-1 text-[8px]" /> {log.modified_by_name || 'System'}
+                        </span>
+                        <span className="text-[8px] font-bold text-gray-400 uppercase">
+                          {log.modified_at ? format(parseISO(log.modified_at), 'MMM dd | HH:mm') : '—'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end items-center space-x-1">
+                        <button onClick={() => openEditModal(log)} className="p-2 text-blue-600 hover:bg-blue-100 rounded-xl transition-all"><SafeIcon icon={FiEdit2} /></button>
+                        <button onClick={() => { if (window.confirm('Delete log?')) employeeService.deleteAttendance(log.id).then(loadAttendance) }} className="p-2 text-red-500 hover:bg-red-100 rounded-xl transition-all"><SafeIcon icon={FiTrash2} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -368,7 +407,11 @@ const AttendanceTracker = () => {
                     <option value="absent">Absent</option>
                     <option value="holiday">Holiday</option>
                   </select>
-                  <p className="text-[8px] font-black text-gray-400 mt-2 uppercase tracking-widest text-center">System will auto-detect UT/Late based on times</p>
+                </div>
+                <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 text-center">
+                  <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest">
+                    Lunch hour (12pm-1pm) is <span className="underline">automatically deducted</span> from late/undertime.
+                  </p>
                 </div>
                 <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black shadow-xl shadow-blue-100 uppercase text-[10px] tracking-[0.2em] transform active:scale-95 transition-all">Update Log Entry</button>
               </form>

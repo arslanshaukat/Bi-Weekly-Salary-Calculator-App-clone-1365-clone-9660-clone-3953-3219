@@ -83,7 +83,10 @@ const CalculationResults = () => {
   };
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount || 0);
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: 'PHP'
+    }).format(amount || 0);
   };
 
   const renderPayslipContent = (record, copyType) => {
@@ -99,14 +102,26 @@ const CalculationResults = () => {
     const hasHalfDay = (daysPresent % 1 !== 0);
     const halfDayDeduction = hasHalfDay ? (dailyRate * 0.5) : 0;
     const absenceDeduction = fullDaysAbsent * dailyRate;
-    
+
     const statutoryTotal = isFullTime ? (
-      (record.sss_contribution || 0) + (record.philhealth_contribution || 0) + (record.pagibig_contribution || 0)
+      (record.sss_contribution || 0) +
+      (record.philhealth_contribution || 0) +
+      (record.pagibig_contribution || 0)
     ) : 0;
-    
-    const totalDeductions = statutoryTotal + (record.cash_advance || 0) + (record.food_allowance || 0) + (record.other_deductions || 0) + (record.late_deduction || 0) + (record.undertime_deduction || 0);
+
+    const totalDeductions = statutoryTotal +
+      (record.cash_advance || 0) +
+      (record.food_allowance || 0) +
+      (record.other_deductions || 0) +
+      (record.late_deduction || 0) +
+      (record.undertime_deduction || 0);
+
     const lateUTHours = ((Number(record.late_minutes || 0) + Number(record.undertime_minutes || 0)) / 60).toFixed(2);
     const otHours = Number(record.overtime_hours || 0).toFixed(2);
+    
+    // Derived Holiday Counts
+    const regHolidayDays = Math.round((Number(record.reg_holiday_pay || 0) / (dailyRate || 1)) * 10) / 10;
+    const specHolidayDays = Math.round((Number(record.spec_holiday_pay || 0) / ((dailyRate * 0.3) || 1)) * 10) / 10;
 
     return (
       <div className="payslip-print-block">
@@ -115,8 +130,8 @@ const CalculationResults = () => {
           <h1 className="text-xl font-black uppercase tracking-tight">GT International</h1>
           <p className="text-[8px] font-bold tracking-[0.2em] uppercase">Official Payroll Ledger</p>
         </div>
-        
-        <div className="grid grid-cols-2 gap-4 mb-2 pb-1 border-b border-gray-300">
+
+        <div className="grid grid-cols-2 gap-4 mb-2 pb-1 border-b border-gray-300 text-left">
           <div className="text-left">
             <p className="text-[10px] font-black uppercase text-gray-500">Employee Details</p>
             <p className="text-sm font-black uppercase leading-tight">{record.employees?.name}</p>
@@ -124,14 +139,14 @@ const CalculationResults = () => {
               {record.employees?.position} • ₱{dailyRate}/day • {record.employees?.employee_type}
             </p>
           </div>
-          <div className="text-right">
+          <div className="text-right text-right">
             <p className="text-[10px] font-black uppercase text-gray-500">Pay Period</p>
             <p className="text-xs font-black text-blue-800 leading-tight">{record.pay_period}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-8 text-[10px] mb-2 flex-grow">
-          <div className="space-y-0.5">
+          <div className="space-y-0.5 text-left">
             <h4 className="font-black border-b-2 border-gray-800 pb-0.5 uppercase text-blue-800 text-[11px]">Earnings Breakdown</h4>
             <div className="flex justify-between font-bold">
               <span>Expected Salary ({expectedDays}d):</span>
@@ -153,16 +168,26 @@ const CalculationResults = () => {
               <span>Salary Earned:</span>
               <span>{formatCurrency(record.basic_salary)}</span>
             </div>
+
+            {record.reg_holiday_pay > 0 && (
+              <div className="flex justify-between pt-1 font-bold text-blue-800">
+                <span>Reg. Holiday ({regHolidayDays}d):</span>
+                <span>+{formatCurrency(record.reg_holiday_pay)}</span>
+              </div>
+            )}
+            
+            {record.spec_holiday_pay > 0 && (
+              <div className="flex justify-between font-bold text-blue-800">
+                <span>Spec. Holiday ({specHolidayDays}d):</span>
+                <span>+{formatCurrency(record.spec_holiday_pay)}</span>
+              </div>
+            )}
+
             <div className="flex justify-between pt-1 font-bold">
               <span>OT Pay ({otHours}h):</span>
               <span>+{formatCurrency(record.overtime_pay)}</span>
             </div>
-            {isFullTime && record.spec_holiday_pay > 0 && (
-              <div className="flex justify-between text-blue-700 font-bold">
-                <span>Spec. Holiday:</span>
-                <span>+{formatCurrency(record.spec_holiday_pay)}</span>
-              </div>
-            )}
+            
             {record.allowances > 0 && (
               <div className="mt-1 pt-1 border-t border-gray-100">
                 <div className="flex justify-between text-green-700 font-bold">
@@ -172,13 +197,14 @@ const CalculationResults = () => {
                 <p className="text-[7px] font-bold text-gray-500 italic leading-none pl-1">— {record.allowance_description || 'Personnel Allowance'}</p>
               </div>
             )}
+
             <div className="flex justify-between border-t-2 border-black pt-1 font-black text-[12px] mt-2">
               <span>GROSS PAY</span>
               <span>{formatCurrency(record.gross_pay)}</span>
             </div>
           </div>
 
-          <div className="space-y-0.5">
+          <div className="space-y-0.5 text-left">
             <h4 className="font-black border-b-2 border-gray-800 pb-0.5 uppercase text-red-800 text-[11px]">Deductions</h4>
             <div className="space-y-0.5 border-b border-gray-100 pb-1">
               {isFullTime && (

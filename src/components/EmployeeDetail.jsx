@@ -8,22 +8,9 @@ import { toast } from 'react-toastify';
 import { format, parseISO } from 'date-fns';
 
 const { 
-  FiUser, 
-  FiArrowLeft, 
-  FiEdit, 
-  FiCalculator, 
-  FiCalendar, 
-  FiTrendingDown, 
-  FiShield, 
-  FiGift, 
-  FiList, 
-  FiEye, 
-  FiTrash2, 
-  FiClock, 
-  FiEdit2, 
-  FiBriefcase,
-  FiPlus,
-  FiHash
+  FiUser, FiArrowLeft, FiEdit, FiCalculator, FiCalendar, FiTrendingDown, 
+  FiShield, FiGift, FiList, FiEye, FiTrash2, FiClock, FiEdit2, 
+  FiBriefcase, FiPlus, FiHash, FiTag, FiInfo, FiX 
 } = FiIcons;
 
 const EmployeeDetail = () => {
@@ -36,8 +23,8 @@ const EmployeeDetail = () => {
   const [pendingDeductions, setPendingDeductions] = useState([]);
   const [activeTab, setActiveTab] = useState('payslips');
   const [loading, setLoading] = useState(true);
-
-  // Quick Deduction Form State
+  
+  // New Deduction Form State
   const [showAddDeduction, setShowAddDeduction] = useState(false);
   const [newDeduction, setNewDeduction] = useState({
     category: 'Cash Advance',
@@ -70,6 +57,7 @@ const EmployeeDetail = () => {
 
   const handleAddDeduction = async (e) => {
     e.preventDefault();
+    if (!checkPermission('manage_payroll')) return toast.error('Access denied');
     try {
       await employeeService.createDeduction({
         employee_id: employeeId,
@@ -86,10 +74,11 @@ const EmployeeDetail = () => {
   };
 
   const handleDeleteDeduction = async (id) => {
+    if (!checkPermission('manage_payroll')) return toast.error('Access denied');
     if (!window.confirm('Remove this pending deduction?')) return;
     try {
       await employeeService.deleteDeduction(id);
-      setPendingDeductions( prev => prev.filter(d => d.id !== id));
+      setPendingDeductions(prev => prev.filter(d => d.id !== id));
       toast.success('Deduction removed');
     } catch (err) {
       toast.error('Delete failed');
@@ -97,6 +86,7 @@ const EmployeeDetail = () => {
   };
 
   const handleDeleteRecord = async (id) => {
+    if (!checkPermission('delete_payroll')) return toast.error('Access denied');
     if (!window.confirm('Delete this payroll record?')) return;
     try {
       await employeeService.deletePayRecord(id);
@@ -123,6 +113,12 @@ const EmployeeDetail = () => {
 
   const isFullTime = employee.employee_type === 'Full Time';
   const total13thMonth = payRecords.reduce((sum, r) => sum + (r.thirteenth_month || 0), 0);
+  
+  const statsTotal = payRecords.reduce((acc, curr) => ({
+    sss: acc.sss + (Number(curr.sss_contribution) || 0),
+    ph: acc.ph + (Number(curr.philhealth_contribution) || 0),
+    pi: acc.pi + (Number(curr.pagibig_contribution) || 0)
+  }), { sss: 0, ph: 0, pi: 0 });
 
   const tabs = [
     { id: 'payslips', label: 'History', icon: FiList },
@@ -133,7 +129,7 @@ const EmployeeDetail = () => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-12 text-left">
-      {/* Profile Header */}
+      {/* Profile Header Card */}
       <div className="bg-white rounded-3xl shadow-xl p-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 border-b border-gray-100 pb-8">
           <div className="flex items-center space-x-6">
@@ -159,12 +155,10 @@ const EmployeeDetail = () => {
           </div>
           <div className="flex space-x-3">
             <Link to="/calculate" state={{ employee, isEditEmployee: true }} className="flex items-center space-x-2 bg-white border-2 border-orange-100 text-orange-600 px-6 py-3 rounded-2xl font-black hover:bg-orange-50 transition-all uppercase tracking-widest text-[10px]">
-              <SafeIcon icon={FiEdit} />
-              <span>Edit Profile</span>
+              <SafeIcon icon={FiEdit} /> <span>Edit Profile</span>
             </Link>
             <Link to="/calculate" state={{ employee }} className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-2xl font-black hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 uppercase tracking-widest text-[10px]">
-              <SafeIcon icon={FiCalculator} />
-              <span>Calculate Pay</span>
+              <SafeIcon icon={FiCalculator} /> <span>Calculate Pay</span>
             </Link>
           </div>
         </div>
@@ -191,17 +185,14 @@ const EmployeeDetail = () => {
         </div>
       </div>
 
+      {/* Tabs Content */}
       <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
         <div className="flex border-b border-gray-100 overflow-x-auto no-scrollbar">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center space-x-3 px-10 py-6 text-xs font-black uppercase tracking-[0.2em] transition-all whitespace-nowrap border-b-4 ${
-                activeTab === tab.id 
-                  ? 'border-blue-600 text-blue-600 bg-blue-50/30' 
-                  : 'border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50'
-              }`}
+              className={`flex items-center space-x-3 px-10 py-6 text-xs font-black uppercase tracking-[0.2em] transition-all whitespace-nowrap border-b-4 ${activeTab === tab.id ? 'border-blue-600 text-blue-600 bg-blue-50/30' : 'border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
             >
               <SafeIcon icon={tab.icon} />
               <span>{tab.label}</span>
@@ -210,6 +201,7 @@ const EmployeeDetail = () => {
         </div>
 
         <div className="p-8">
+          {/* History Tab */}
           {activeTab === 'payslips' && (
             <div className="space-y-4">
               {payRecords.map(record => (
@@ -245,90 +237,76 @@ const EmployeeDetail = () => {
             </div>
           )}
 
+          {/* Deductions Tab */}
           {activeTab === 'deductions' && (
-            <div className="space-y-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">Pending Deductions Ledger</h3>
-                <button 
-                  onClick={() => setShowAddDeduction(!showAddDeduction)}
-                  className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-xl font-black uppercase text-[9px] tracking-widest hover:bg-blue-700 transition-all"
-                >
-                  <SafeIcon icon={showAddDeduction ? FiIcons.FiX : FiPlus} />
-                  <span>{showAddDeduction ? 'Close Form' : 'Add Deduction'}</span>
-                </button>
+            <div className="space-y-8">
+              <div className="flex justify-between items-center">
+                <div className="text-left">
+                  <h3 className="text-xl font-black text-gray-800 uppercase tracking-tight">Pending Deductions</h3>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Unprocessed Liabilities</p>
+                </div>
+                {!showAddDeduction && (
+                  <button onClick={() => setShowAddDeduction(true)} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black shadow-xl hover:bg-blue-700 transition-all uppercase tracking-widest text-[10px] flex items-center">
+                    <SafeIcon icon={FiPlus} className="mr-2" /> Add New
+                  </button>
+                )}
               </div>
 
               {showAddDeduction && (
-                <form onSubmit={handleAddDeduction} className="bg-gray-50 p-6 rounded-3xl border-2 border-blue-100 grid grid-cols-1 md:grid-cols-4 gap-4 animate-in slide-in-from-top-4">
-                  <div>
-                    <label className="block text-[8px] font-black text-gray-400 uppercase mb-1">Category</label>
-                    <select 
-                      value={newDeduction.category} 
-                      onChange={e => setNewDeduction({...newDeduction, category: e.target.value})}
-                      className="w-full p-2.5 border rounded-xl font-black text-xs uppercase"
-                    >
-                      <option value="Cash Advance">Cash Advance</option>
-                      <option value="Loan">Loan</option>
-                      <option value="Food">Food (Ednas)</option>
-                      <option value="Others">Others</option>
-                    </select>
+                <div className="bg-blue-50/50 p-8 rounded-[2rem] border-2 border-blue-100 animate-in fade-in slide-in-from-top-4 duration-300">
+                  <div className="flex justify-between items-center mb-6">
+                    <h4 className="font-black text-blue-800 uppercase text-xs tracking-widest">Log New Liability</h4>
+                    <button onClick={() => setShowAddDeduction(false)} className="text-gray-400 hover:text-red-500"><SafeIcon icon={FiX} /></button>
                   </div>
-                  <div>
-                    <label className="block text-[8px] font-black text-gray-400 uppercase mb-1">Amount (₱)</label>
-                    <input 
-                      type="number" 
-                      value={newDeduction.amount} 
-                      onChange={e => setNewDeduction({...newDeduction, amount: e.target.value})}
-                      className="w-full p-2.5 border rounded-xl font-black text-xs"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[8px] font-black text-gray-400 uppercase mb-1">Notes / Remarks</label>
-                    <input 
-                      type="text" 
-                      value={newDeduction.notes} 
-                      onChange={e => setNewDeduction({...newDeduction, notes: e.target.value})}
-                      className="w-full p-2.5 border rounded-xl font-bold text-xs"
-                      placeholder="e.g. SSS Loan Pmt"
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <button type="submit" className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-black uppercase text-[9px] tracking-widest shadow-lg shadow-blue-100">
-                      Commit Entry
-                    </button>
-                  </div>
-                </form>
+                  <form onSubmit={handleAddDeduction} className="grid grid-cols-1 md:grid-cols-4 gap-4 text-left">
+                    <div>
+                      <label className="block text-[8px] font-black text-blue-600 uppercase mb-2">Category</label>
+                      <select value={newDeduction.category} onChange={e => setNewDeduction(p => ({ ...p, category: e.target.value }))} className="w-full p-3 border rounded-xl font-bold bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                        <option>Cash Advance</option>
+                        <option>Loan</option>
+                        <option>Food</option>
+                        <option>Others</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[8px] font-black text-blue-600 uppercase mb-2">Amount (₱)</label>
+                      <input type="number" value={newDeduction.amount} onChange={e => setNewDeduction(p => ({ ...p, amount: e.target.value }))} className="w-full p-3 border rounded-xl font-bold bg-white" required />
+                    </div>
+                    <div>
+                      <label className="block text-[8px] font-black text-blue-600 uppercase mb-2">Notes / Reason</label>
+                      <input type="text" value={newDeduction.notes} onChange={e => setNewDeduction(p => ({ ...p, notes: e.target.value }))} className="w-full p-3 border rounded-xl font-bold bg-white" placeholder="Optional..." />
+                    </div>
+                    <div className="flex items-end">
+                      <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg hover:shadow-blue-200 transition-all">Commit Entry</button>
+                    </div>
+                  </form>
+                </div>
               )}
 
-              <div className="bg-white border border-gray-100 rounded-3xl overflow-hidden">
+              <div className="overflow-hidden border border-gray-100 rounded-[2rem]">
                 <table className="w-full text-left">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 border-b border-gray-100">
                     <tr>
-                      <th className="px-6 py-4 text-[9px] font-black text-gray-400 uppercase tracking-widest">Entry Date</th>
-                      <th className="px-6 py-4 text-[9px] font-black text-gray-400 uppercase tracking-widest">Category</th>
-                      <th className="px-6 py-4 text-[9px] font-black text-gray-400 uppercase tracking-widest">Description</th>
-                      <th className="px-6 py-4 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Amount</th>
-                      <th className="px-6 py-4 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center">Action</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Date Reported</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Category</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Notes</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Amount Due</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {pendingDeductions.map(ded => (
-                      <tr key={ded.id} className="hover:bg-red-50/30 transition-colors">
-                        <td className="px-6 py-4 font-black text-xs text-gray-800">{format(parseISO(ded.date), 'MMM dd, yyyy')}</td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase ${
-                            ded.category === 'Food' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'
-                          }`}>
-                            {ded.category}
+                    {pendingDeductions.map(item => (
+                      <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="px-8 py-5 text-sm font-bold text-gray-600">{item.date}</td>
+                        <td className="px-8 py-5">
+                          <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${item.category === 'Food' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {item.category}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-xs font-bold text-gray-500 italic">{ded.notes || '—'}</td>
-                        <td className="px-6 py-4 text-right font-black text-red-600">{formatCurrency(ded.amount)}</td>
-                        <td className="px-6 py-4 text-center">
-                          <button onClick={() => handleDeleteDeduction(ded.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg">
-                            <SafeIcon icon={FiTrash2} />
-                          </button>
+                        <td className="px-8 py-5 text-xs text-gray-400 font-bold italic">{item.notes || '—'}</td>
+                        <td className="px-8 py-5 text-right font-black text-red-600 font-mono">-{formatCurrency(item.amount)}</td>
+                        <td className="px-8 py-5 text-center">
+                          <button onClick={() => handleDeleteDeduction(item.id)} className="p-2 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all"><SafeIcon icon={FiTrash2} /></button>
                         </td>
                       </tr>
                     ))}
@@ -343,69 +321,77 @@ const EmployeeDetail = () => {
             </div>
           )}
 
+          {/* Statutory Tab */}
           {activeTab === 'contributions' && (
-            <div className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <div className="bg-blue-600 p-2 rounded-lg text-white"><SafeIcon icon={FiHash} /></div>
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">SSS Number</p>
+            <div className="space-y-10">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="bg-gray-900 p-8 rounded-[2rem] text-white shadow-2xl relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-125 transition-transform"><SafeIcon icon={FiShield} className="text-6xl" /></div>
+                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-4">SSS Network</p>
+                  <p className="text-2xl font-black font-mono tracking-widest mb-2">{employee.sss_number || 'NOT LOGGED'}</p>
+                  <div className="flex justify-between items-center border-t border-white/10 pt-4 mt-4">
+                    <span className="text-[9px] font-black uppercase opacity-60">Total Remitted:</span>
+                    <span className="font-black text-blue-300">{formatCurrency(statsTotal.sss)}</span>
                   </div>
-                  <p className="text-xl font-black text-gray-800 font-mono tracking-tighter">{employee.sss_number || 'NOT SET'}</p>
                 </div>
-                <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <div className="bg-green-600 p-2 rounded-lg text-white"><SafeIcon icon={FiHash} /></div>
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">PhilHealth ID</p>
+
+                <div className="bg-gray-900 p-8 rounded-[2rem] text-white shadow-2xl relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-125 transition-transform"><SafeIcon icon={FiTag} className="text-6xl" /></div>
+                  <p className="text-[10px] font-black text-green-400 uppercase tracking-[0.2em] mb-4">PhilHealth Hub</p>
+                  <p className="text-2xl font-black font-mono tracking-widest mb-2">{employee.philhealth_number || 'NOT LOGGED'}</p>
+                  <div className="flex justify-between items-center border-t border-white/10 pt-4 mt-4">
+                    <span className="text-[9px] font-black uppercase opacity-60">Total Remitted:</span>
+                    <span className="font-black text-green-300">{formatCurrency(statsTotal.ph)}</span>
                   </div>
-                  <p className="text-xl font-black text-gray-800 font-mono tracking-tighter">{employee.philhealth_number || 'NOT SET'}</p>
                 </div>
-                <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <div className="bg-orange-600 p-2 rounded-lg text-white"><SafeIcon icon={FiHash} /></div>
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Pag-IBIG Number</p>
+
+                <div className="bg-gray-900 p-8 rounded-[2rem] text-white shadow-2xl relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-125 transition-transform"><SafeIcon icon={FiBriefcase} className="text-6xl" /></div>
+                  <p className="text-[10px] font-black text-orange-400 uppercase tracking-[0.2em] mb-4">Pag-IBIG Fund</p>
+                  <p className="text-2xl font-black font-mono tracking-widest mb-2">{employee.pagibig_number || 'NOT LOGGED'}</p>
+                  <div className="flex justify-between items-center border-t border-white/10 pt-4 mt-4">
+                    <span className="text-[9px] font-black uppercase opacity-60">Total Remitted:</span>
+                    <span className="font-black text-orange-300">{formatCurrency(statsTotal.pi)}</span>
                   </div>
-                  <p className="text-xl font-black text-gray-800 font-mono tracking-tighter">{employee.pagibig_number || 'NOT SET'}</p>
                 </div>
               </div>
 
-              <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden">
-                <div className="p-6 bg-gray-50/50 border-b border-gray-100 flex items-center justify-between">
-                  <h3 className="text-xs font-black text-gray-800 uppercase tracking-widest">Contribution History Ledger</h3>
-                  <div className="bg-blue-600 text-white px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-widest">
-                    Total: {formatCurrency(payRecords.reduce((s, r) => s + (r.sss_contribution || 0) + (r.philhealth_contribution || 0) + (r.pagibig_contribution || 0), 0))}
-                  </div>
+              {!isFullTime && (
+                <div className="bg-orange-50 p-6 rounded-3xl border border-orange-100 flex items-center justify-center space-x-3 text-orange-700">
+                  <SafeIcon icon={FiInfo} className="text-xl" />
+                  <p className="text-[10px] font-black uppercase tracking-widest">Statutory Benefits are currently restricted for Temporary Personnel.</p>
                 </div>
-                <div className="overflow-x-auto">
+              )}
+
+              <div className="text-left">
+                <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight mb-6">Contribution History</h3>
+                <div className="overflow-hidden border border-gray-100 rounded-[2.5rem]">
                   <table className="w-full text-left">
-                    <thead className="bg-white">
+                    <thead className="bg-gray-50 border-b border-gray-100">
                       <tr>
-                        <th className="px-8 py-5 text-[9px] font-black text-gray-400 uppercase tracking-widest">Pay Period</th>
-                        <th className="px-8 py-5 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">SSS</th>
-                        <th className="px-8 py-5 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">PhilHealth</th>
-                        <th className="px-8 py-5 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Pag-IBIG</th>
-                        <th className="px-8 py-5 text-[9px] font-black text-gray-800 uppercase tracking-widest text-right">Total Stat.</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Pay Cycle</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">SSS</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">PhilHealth</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Pag-IBIG</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-gray-800 uppercase tracking-widest text-right bg-blue-50/50">Total</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 font-black">
+                    <tbody className="divide-y divide-gray-50">
                       {payRecords.map(record => {
-                        const sss = record.sss_contribution || 0;
-                        const ph = record.philhealth_contribution || 0;
-                        const pi = record.pagibig_contribution || 0;
-                        if (sss + ph + pi === 0) return null;
+                        const total = (Number(record.sss_contribution) || 0) + (Number(record.philhealth_contribution) || 0) + (Number(record.pagibig_contribution) || 0);
                         return (
-                          <tr key={record.id} className="hover:bg-blue-50/30 transition-colors">
-                            <td className="px-8 py-5 text-xs text-gray-800">{record.pay_period}</td>
-                            <td className="px-8 py-5 text-right text-gray-500 font-mono text-xs">{formatCurrency(sss)}</td>
-                            <td className="px-8 py-5 text-right text-gray-500 font-mono text-xs">{formatCurrency(ph)}</td>
-                            <td className="px-8 py-5 text-right text-gray-500 font-mono text-xs">{formatCurrency(pi)}</td>
-                            <td className="px-8 py-5 text-right text-blue-800 font-mono text-xs bg-blue-50/20">{formatCurrency(sss + ph + pi)}</td>
+                          <tr key={record.id} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-8 py-5 font-black text-gray-700 text-xs">{record.pay_period}</td>
+                            <td className="px-8 py-5 text-right font-mono text-xs text-gray-500">{formatCurrency(record.sss_contribution)}</td>
+                            <td className="px-8 py-5 text-right font-mono text-xs text-gray-500">{formatCurrency(record.philhealth_contribution)}</td>
+                            <td className="px-8 py-5 text-right font-mono text-xs text-gray-500">{formatCurrency(record.pagibig_contribution)}</td>
+                            <td className="px-8 py-5 text-right font-black text-blue-600 font-mono bg-blue-50/20">{formatCurrency(total)}</td>
                           </tr>
                         );
                       })}
-                      {payRecords.filter(r => (r.sss_contribution || 0) + (r.philhealth_contribution || 0) + (r.pagibig_contribution || 0) > 0).length === 0 && (
+                      {payRecords.length === 0 && (
                         <tr>
-                          <td colSpan="5" className="py-20 text-center text-gray-300 font-black uppercase tracking-widest italic">No statutory contributions recorded yet</td>
+                          <td colSpan="5" className="py-20 text-center text-gray-300 font-black uppercase tracking-widest italic">No contribution records found</td>
                         </tr>
                       )}
                     </tbody>
@@ -415,6 +401,7 @@ const EmployeeDetail = () => {
             </div>
           )}
 
+          {/* 13th Month Tab */}
           {activeTab === '13thmonth' && (
             <div className="space-y-6">
               <div className="bg-green-600 p-8 rounded-[2.5rem] text-white flex justify-between items-center shadow-2xl shadow-green-100 mb-8">
@@ -427,6 +414,7 @@ const EmployeeDetail = () => {
                   <SafeIcon icon={FiGift} className="text-5xl" />
                 </div>
               </div>
+
               <div className="bg-gray-50/50 rounded-3xl border border-gray-100 overflow-hidden text-left">
                 <table className="w-full text-left">
                   <thead className="bg-white border-b border-gray-100">
@@ -437,22 +425,28 @@ const EmployeeDetail = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {payRecords.map(record => (
-                      <tr key={record.id} className="hover:bg-white transition-colors">
-                        <td className="px-8 py-5">
-                          <p className="font-black text-gray-800 leading-tight">{record.pay_period}</p>
-                          <p className="text-[9px] font-bold text-gray-400 uppercase mt-1 tracking-tighter flex items-center">
-                            <SafeIcon icon={FiClock} className="mr-1 text-[8px]" /> {format(parseISO(record.created_at), 'MMM dd, yyyy HH:mm')}
-                          </p>
-                        </td>
-                        <td className="px-8 py-5 font-black text-gray-600 font-mono text-center">
-                          {Math.floor(record.days_present)} Full Days
-                        </td>
-                        <td className="px-8 py-5 font-black text-right text-green-600 text-lg font-mono">
-                          +{formatCurrency(record.thirteenth_month)}
-                        </td>
-                      </tr>
-                    ))}
+                    {payRecords.map(record => {
+                      const dailyRate = employee.daily_salary || 1;
+                      const eligibleDays = record.thirteenth_month_days !== undefined && record.thirteenth_month_days !== null 
+                        ? Number(record.thirteenth_month_days) 
+                        : Math.round((Number(record.thirteenth_month) * 12) / dailyRate);
+                      return (
+                        <tr key={record.id} className="hover:bg-white transition-colors">
+                          <td className="px-8 py-5">
+                            <p className="font-black text-gray-800 leading-tight">{record.pay_period}</p>
+                            <p className="text-[9px] font-bold text-gray-400 uppercase mt-1 tracking-tighter flex items-center">
+                              <SafeIcon icon={FiClock} className="mr-1 text-[8px]" /> {format(parseISO(record.created_at), 'MMM dd, yyyy HH:mm')}
+                            </p>
+                          </td>
+                          <td className="px-8 py-5 font-black text-gray-600 font-mono text-center">
+                            {eligibleDays} Full Days
+                          </td>
+                          <td className="px-8 py-5 font-black text-right text-green-600 text-lg font-mono">
+                            +{formatCurrency(record.thirteenth_month)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
