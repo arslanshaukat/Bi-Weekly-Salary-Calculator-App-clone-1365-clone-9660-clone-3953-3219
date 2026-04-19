@@ -23,3 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 .env*.bak
+src/supabase.js.bak
+src/services/employeeService.js.bak
+src/supabase.js.bak
+src/services/employeeService.js.bak
+src/supabase.js.bak
+src/services/employeeService.js.bak

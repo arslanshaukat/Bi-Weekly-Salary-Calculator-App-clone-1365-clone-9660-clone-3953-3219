@@ -4,8 +4,8 @@ import PocketBase from 'pocketbase'
 // ============================================================
 // Supabase — AUTH ONLY (login, sessions, passwords)
 // ============================================================
-const SUPABASE_URL = 'https://ihruwmkyoezpjvccxajn.supabase.co'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlocnV3bWt5b2V6cGp2Y2N4YWpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU2ODY2MDEsImV4cCI6MjA4MTI2MjYwMX0.AFS9ObunyZF6orv7KwnbSDybvfbEB0J_EBlVTRQvf-Q'
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
