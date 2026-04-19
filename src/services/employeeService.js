@@ -76,9 +76,15 @@ export const employeeService = {
   },
 
   async updateEmployee(id, employeeData) {
-    const existing = await pb.collection('employees').getFirstListItem(`sb_id="${id}"`);
-    const record = await pb.collection('employees').update(existing.id, employeeData);
-    return mapRecord(record);
+    try {
+      const existing = await pb.collection('employees').getFirstListItem(`sb_id="${id}"`);
+      const record = await pb.collection('employees').update(existing.id, employeeData);
+      return mapRecord(record);
+    } catch(e) {
+      // Fallback: try direct PB id
+      const record = await pb.collection('employees').update(id, employeeData);
+      return mapRecord(record);
+    }
   },
 
   async getEmployees(columns = '') {
@@ -100,16 +106,22 @@ export const employeeService = {
   },
 
   async getEmployeeById(id) {
-    const record = await pb.collection('employees').getFirstListItem(`sb_id="${id}"`);
-    return mapRecord(record);
+    try {
+      const record = await pb.collection('employees').getFirstListItem(`sb_id="${id}"`);
+      return mapRecord(record);
+    } catch(e) {
+      const record = await pb.collection('employees').getOne(id);
+      return mapRecord(record);
+    }
   },
 
   async deleteEmployee(id) {
+    // Soft delete — never permanently remove, just mark inactive
     try {
       const existing = await pb.collection('employees').getFirstListItem(`sb_id="${id}"`);
-      await pb.collection('employees').delete(existing.id);
+      await pb.collection('employees').update(existing.id, { is_active: false });
     } catch(e) {
-      try { await pb.collection('employees').delete(id); } catch(e2) { throw new Error(e2.message); }
+      try { await pb.collection('employees').update(id, { is_active: false }); } catch(e2) { throw new Error(e2.message); }
     }
   },
 

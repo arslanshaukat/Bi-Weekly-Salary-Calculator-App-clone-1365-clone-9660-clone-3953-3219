@@ -1,3 +1,5 @@
+import EmployeeDocuments from './EmployeeDocuments';
+import BundyPinManager from './BundyPinManager';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import SafeIcon from '../common/SafeIcon';
@@ -9,7 +11,7 @@ import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 
 const { 
   FiUser, FiArrowLeft, FiCalculator, FiCalendar, FiTrendingDown, 
-  FiShield, FiGift, FiList, FiEye, FiTrash2, FiClock, 
+  FiShield, FiGift, FiList, FiEye, FiTrash2, FiClock, FiFile, 
   FiEdit2, FiPlus, FiInfo, FiX, FiCheckCircle, FiActivity, FiUnlock 
 } = FiIcons;
 
@@ -204,7 +206,9 @@ const EmployeeDetail = () => {
             { id: 'deductions', label: 'Liabilities', icon: FiTrendingDown },
             { id: 'statutory', label: 'Contributions', icon: FiShield },
             { id: 'thirteenth', label: '13th Month', icon: FiGift },
-            { id: 'info', label: 'Personnel Info', icon: FiInfo }
+            { id: 'info', label: 'Personnel Info', icon: FiInfo },
+            { id: 'bundy', label: 'Bundy & PIN', icon: FiClock },
+            { id: 'documents', label: 'Documents', icon: FiFile }
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] border-b-4 whitespace-nowrap transition-all flex items-center space-x-3 ${activeTab === tab.id ? 'border-blue-600 text-blue-600 bg-white' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
               <SafeIcon icon={tab.icon} className="text-sm" />
@@ -461,6 +465,14 @@ const EmployeeDetail = () => {
                 </table>
               </div>
             </div>
+          )}
+
+          {activeTab === 'bundy' && (
+            <BundyPinManager employee={employee} />
+          )}
+
+          {activeTab === 'documents' && (
+            <EmployeeDocuments employee={employee} />
           )}
         </div>
       </div>

@@ -12,6 +12,7 @@ const { FiUsers, FiPlus, FiEdit, FiTrash2, FiSearch, FiCalendar, FiLock, FiArrow
 
 const EmployeeList = () => {
   const [employees, setEmployees] = useState([]);
+  const [showArchive, setShowArchive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const { checkPermission } = useAuth();
@@ -83,12 +84,23 @@ const EmployeeList = () => {
     }
   };
 
-  const filteredEmployees = employees.filter(e => 
-    e.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    e.employee_id?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredEmployees = employees.filter(e => {
+    const matchSearch = e.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      e.employee_id?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchArchive = showArchive ? !e.is_active : e.is_active !== false;
+    return matchSearch && matchArchive;
+  });
 
   const formatCurrency = (amt) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amt || 0);
+
+  const reinstateEmployee = async (emp) => {
+    if (!window.confirm(`Reinstate ${emp.name}? They will be set back to Active.`)) return;
+    try {
+      await employeeService.updateEmployee(emp.id, { is_active: true });
+      toast.success(`${emp.name} reinstated successfully`);
+      loadEmployees();
+    } catch (e) { toast.error('Failed to reinstate employee'); }
+  };
 
   if (loading) return (
     <div className="max-w-6xl mx-auto py-20 text-center">
@@ -111,7 +123,7 @@ const EmployeeList = () => {
             </div>
           </div>
           {checkPermission('manage_employees') ? (
-            <Link to="/calculate" state={{ createNew: true }} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95 uppercase tracking-widest text-xs flex items-center">
+            <Link to="/employees" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95 uppercase tracking-widest text-xs flex items-center">
               <SafeIcon icon={FiPlus} className="mr-2" /> Add Employee
             </Link>
           ) : (
@@ -121,7 +133,17 @@ const EmployeeList = () => {
           )}
         </div>
 
-        <div className="relative">
+        <div className="flex items-center gap-3 mb-4">
+          <button onClick={() => setShowArchive(false)}
+            className={`px-5 py-2.5 rounded-2xl font-black uppercase tracking-widest text-xs transition-all ${!showArchive ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+            Active
+          </button>
+          <button onClick={() => setShowArchive(true)}
+            className={`px-5 py-2.5 rounded-2xl font-black uppercase tracking-widest text-xs transition-all ${showArchive ? 'bg-red-600 text-white shadow-lg shadow-red-100' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+            🗂 Archive
+          </button>
+        </div>
+      <div className="relative">
           <SafeIcon icon={FiSearch} className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400 text-lg" />
           <input 
             type="text" 
@@ -133,6 +155,15 @@ const EmployeeList = () => {
         </div>
       </div>
 
+      {showArchive && (
+        <div className="mb-6 bg-red-50 border border-red-100 rounded-2xl px-6 py-4 flex items-center gap-3">
+          <span className="text-red-500 text-lg">🗂</span>
+          <div>
+            <p className="text-sm font-black text-red-700 uppercase tracking-tight">Viewing Archived Employees</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-red-400">Inactive / Terminated records</p>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {filteredEmployees.map((emp) => (
           <div key={emp.id} className="bg-white p-6 rounded-[2rem] shadow-lg border border-gray-100 hover:shadow-2xl transition-all group">
@@ -149,15 +180,21 @@ const EmployeeList = () => {
                 </div>
               </div>
               <div className="flex space-x-1">
-                <Link to="/calculate" state={{ employee: emp, isEditEmployee: true }} className="p-2.5 text-orange-500 hover:bg-orange-50 rounded-xl transition-all">
-                  <SafeIcon icon={FiEdit} />
-                </Link>
-                <button 
-                  onClick={() => initiateDelete(emp)} 
-                  className="p-2.5 text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                >
-                  <SafeIcon icon={FiTrash2} />
-                </button>
+                {emp.is_active !== false ? (
+                  <>
+                    <Link to="/calculate" state={{ employee: emp, isEditEmployee: true }} className="p-2.5 text-orange-500 hover:bg-orange-50 rounded-xl transition-all">
+                      <SafeIcon icon={FiEdit} />
+                    </Link>
+                    <button onClick={() => initiateDelete(emp)} className="p-2.5 text-red-500 hover:bg-red-50 rounded-xl transition-all">
+                      <SafeIcon icon={FiTrash2} />
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={() => reinstateEmployee(emp)}
+                    className="px-3 py-1.5 bg-green-600 text-white rounded-xl font-black uppercase tracking-widest text-[9px] hover:bg-green-700 transition-all shadow-sm shadow-green-100">
+                    ↩ Reinstate
+                  </button>
+                )}
               </div>
             </div>
 
@@ -175,7 +212,7 @@ const EmployeeList = () => {
             <div className="flex items-center justify-between pt-4 border-t border-gray-50">
               <div className="flex items-center space-x-2">
                 <span className={`w-2 h-2 rounded-full ${emp.is_active ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">{emp.is_active ? 'Active' : 'Inactive'}</span>
+                <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">{emp.is_active ? 'Active' : 'Terminated'}</span>
               </div>
               <Link to={`/employee/${emp.id}`} className="text-blue-600 text-[10px] font-black uppercase tracking-widest hover:translate-x-1 transition-transform flex items-center group-hover:font-black">
                 View History <FiArrowRight className="ml-1" />
