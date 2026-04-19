@@ -42,7 +42,7 @@ export default function BundyClock() {
     try {
       const emps = await pb.collection('employees').getFullList({ filter: 'is_active=true', sort: 'name' });
       setEmployees(emps);
-      const logs = await pb.collection('bundy_logs').getFullList({ filter: `date="${todayISO()}"`, sort: '-time' });
+      const logs = await pb.collection('bundy_logs').getFullList({ filter: `date="${todayISO()}"`, sort: '-created' });
       const latest = {};
       logs.forEach(l => { if (!latest[l.employee_id]) latest[l.employee_id] = l; });
       const inNow = Object.values(latest).filter(l => l.action === 'clock_in').map(l => ({ id: l.employee_id, name: l.employee_name, time: l.time }));
@@ -126,10 +126,17 @@ export default function BundyClock() {
     }
     await pb.collection('bundy_logs').create({ employee_id: empId, employee_name: emp.name, action, time: timeStr, date: today, method });
     await updateAttendance(empId, action, timeStr, today);
+    // Immediately update UI state - filter by all possible ID formats
+    const allEmpIds = [empId, emp.id, emp.sb_id].filter(Boolean);
+    if (action === 'clock_out') {
+      setClockedIn(prev => prev.filter(e => !allEmpIds.includes(e.id)));
+    } else {
+      setClockedIn(prev => [...prev.filter(e => !allEmpIds.includes(e.id)), { id: empId, name: emp.name, time: timeStr }]);
+    }
     setMessage(action === 'clock_in' ? `In · ${timeStr}` : `Out · ${timeStr}`);
     setSelectedEmployee({ ...emp, action, timeStr });
     setMode('success');
-    await loadData();
+    loadData(); // refresh in background
     setTimeout(() => { setMode('idle'); setMessage(''); setSelectedEmployee(null); }, 4000);
   }
 

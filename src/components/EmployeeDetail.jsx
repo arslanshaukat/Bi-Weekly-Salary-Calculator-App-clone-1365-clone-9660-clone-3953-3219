@@ -49,7 +49,13 @@ const EmployeeDetail = () => {
         employeeService.getAttendance(employeeId, start, end)
       ]);
       setEmployee(emp);
-      setPayRecords(records);
+      // Sort by start_date descending (latest period on top)
+      const sortedRecords = [...(records || [])].sort((a, b) => {
+        const dateA = new Date(a.start_date || a.created_at || 0);
+        const dateB = new Date(b.start_date || b.created_at || 0);
+        return dateB - dateA;
+      });
+      setPayRecords(sortedRecords);
       setDeductionHistory(history);
       setAttendance(logs);
     } catch (error) {
@@ -309,6 +315,16 @@ const EmployeeDetail = () => {
                         <p className={`text-xl font-black ${record.net_pay < 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(record.net_pay)}</p>
                       </div>
                       <Link to={`/results/${record.id}`} state={{ employee, record }} className="px-8 py-4 bg-white text-gray-600 rounded-2xl font-black hover:bg-blue-600 hover:text-white transition-all uppercase tracking-widest text-[9px] border shadow-sm">View Payslip</Link>
+                      <button onClick={async () => {
+                        if (!window.confirm('Delete this payroll record?')) return;
+                        try {
+                          await employeeService.deletePayRecord(record.id);
+                          setPayRecords(prev => prev.filter(r => r.id !== record.id));
+                          toast.success('Record deleted');
+                        } catch(e) { toast.error('Failed to delete'); }
+                      }} className="p-3 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-2xl transition-all border border-transparent hover:border-red-100" title="Delete">
+                        <SafeIcon icon={FiTrash2} className="text-sm" />
+                      </button>
                     </div>
                   </div>
                 ))}
