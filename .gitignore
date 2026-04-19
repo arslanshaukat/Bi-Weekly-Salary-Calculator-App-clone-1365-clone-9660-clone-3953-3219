@@ -30,3 +30,4 @@ src/services/employeeService.js.bak
 src/supabase.js.bak
 src/services/employeeService.js.bak
 .env
+.env
