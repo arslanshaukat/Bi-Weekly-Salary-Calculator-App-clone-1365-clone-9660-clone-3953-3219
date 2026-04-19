@@ -9,7 +9,7 @@ const ActivityWatcher = () => {
   const timeoutRef = useRef(null);
   
   // 2 Minutes = 120,000ms
-  const INACTIVITY_LIMIT = 120000; 
+  const INACTIVITY_LIMIT = 1800000; // 30 Minutes 
 
   const resetTimer = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);

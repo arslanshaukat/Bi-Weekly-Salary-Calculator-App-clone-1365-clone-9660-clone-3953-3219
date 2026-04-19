@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '../supabase.js';
-import { toast } from 'react-toastify';
 
+import { toast } from 'react-toastify';
+import { supabase, initPocketBase } from '../supabase.js';
 const AuthContext = createContext({});
 
 export const useAuth = () => useContext(AuthContext);
@@ -56,11 +56,12 @@ export const AuthProvider = ({ children }) => {
         if (mounted) {
           if (session?.user) {
             setUser(session.user);
-            // Step 2: Release UI IMMEDIATELY
-            setLoading(false);
+            // Step 2: Init PocketBase first, then release UI
+            await initPocketBase();
             initialized.current = true;
+            setLoading(false);
             
-            // Step 3: Fetch profile data quietly in background
+            // Step 3: Fetch profile in background
             fetchProfile(session.user.id, session.user.email);
           } else {
             setLoading(false);
@@ -79,6 +80,7 @@ export const AuthProvider = ({ children }) => {
       
       if (session?.user) {
         setUser(session.user);
+        await initPocketBase();
         if (!profile || profile.id !== session.user.id) {
           fetchProfile(session.user.id, session.user.email);
         }

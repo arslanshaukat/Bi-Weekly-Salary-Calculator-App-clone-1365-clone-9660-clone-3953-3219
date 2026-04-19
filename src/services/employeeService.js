@@ -1,34 +1,68 @@
-import { supabase } from '../supabase.js';
+import { pb } from '../supabase.js';
 import { getHoliday } from '../utils/holidays';
 
 const inFlightRequests = new Map();
 
-// Helper constants for time calculations (in minutes from midnight)
-const SHIFT_START = 8 * 60;   // 08:00
-const LUNCH_START = 12 * 60;  // 12:00
-const LUNCH_END = 13 * 60;    // 13:00
-const SHIFT_END = 17 * 60;    // 17:00
+const SHIFT_START = 8 * 60;
+const LUNCH_START = 12 * 60;
+const LUNCH_END = 13 * 60;
+const SHIFT_END = 17 * 60;
 
-/**
- * Calculates minutes lost between two points in time, excluding the 12-1 lunch hour.
- */
-const calculateMinutesExcludingLunch = (startMins, endMins) => {
-  if (startMins >= endMins) return 0;
-  
-  let totalMinutes = endMins - startMins;
-  
-  // Calculate overlap with lunch (12:00 - 13:00)
-  const overlapStart = Math.max(startMins, LUNCH_START);
-  const overlapEnd = Math.min(endMins, LUNCH_END);
-  
-  if (overlapStart < overlapEnd) {
-    totalMinutes -= (overlapEnd - overlapStart);
-  }
-  
-  return Math.max(0, totalMinutes);
-};
+// Helper: map PocketBase record to Supabase-compatible format
+function mapRecord(record) {
+  const r = { ...record };
+  if (r.sb_id) { r.id = r.sb_id; delete r.sb_id; }
+  delete r.collectionId;
+  delete r.collectionName;
+  // Normalize date fields to YYYY-MM-DD format
+  if (r.date && r.date.includes(" ")) r.date = r.date.split(" ")[0];
+  if (r.start_date && r.start_date.includes(" ")) r.start_date = r.start_date.split(" ")[0];
+  if (r.end_date && r.end_date.includes(" ")) r.end_date = r.end_date.split(" ")[0];
+  // Normalize timestamp fields to ISO format
+  if (r.created_at && typeof r.created_at === "string") r.created_at = r.created_at.replace(" ", "T"); else if (!r.created_at) r.created_at = new Date().toISOString();
+  if (r.updated_at && r.updated_at.includes(" ")) r.updated_at = r.updated_at.replace(" ", "T");
+  if (r.modified_at && r.modified_at.includes(" ")) r.modified_at = r.modified_at.replace(" ", "T");
+  if (r.pay_date && r.pay_date.includes(" ")) r.pay_date = r.pay_date.split(" ")[0];
+  // Convert empty strings to numbers for numeric fields
+  const numericFields = ["basic_salary","gross_pay","net_pay","overtime_hours","overtime_pay","holiday_hours","holiday_pay","undertime_hours","undertime_deduction","late_minutes","late_deduction","allowances","thirteenth_month","sss_contribution","philhealth_contribution","pagibig_contribution","cash_advance","loans","food_allowance","other_deductions","days_present","overtime_minutes","undertime_minutes","reg_holiday_pay","spec_holiday_pay","thirteenth_month_days","daily_salary","late_minutes","undertime_minutes"];
+  numericFields.forEach(f => {
+    if (r[f] === '' || r[f] === null || r[f] === undefined) r[f] = 0;
+    else if (typeof r[f] === 'string') r[f] = parseFloat(r[f]) || 0;
+  });
+
+  return r;
+}
 
 export const employeeService = {
+
+  // --- HOLIDAY MANAGEMENT ---
+  async getHolidays() {
+    try {
+      const records = await pb.collection('holidays_1773420000000').getFullList({ sort: 'date' });
+      return records.map(mapRecord);
+    } catch(e) { return []; }
+  },
+
+  async upsertHoliday(holidayData) {
+    try {
+      const existing = await pb.collection('holidays_1773420000000').getFirstListItem('date="' + holidayData.date + '"');
+      const record = await pb.collection('holidays_1773420000000').update(existing.id, holidayData);
+      return mapRecord(record);
+    } catch(e) {
+      const record = await pb.collection('holidays_1773420000000').create(holidayData);
+      return mapRecord(record);
+    }
+  },
+
+  async deleteHoliday(id) {
+    try {
+      const existing = await pb.collection('holidays_1773420000000').getFirstListItem('sb_id="' + id + '"');
+      await pb.collection('holidays_1773420000000').delete(existing.id);
+    } catch(e) {
+      try { await pb.collection('holidays_1773420000000').delete(id); } catch(e2) { throw new Error(e2.message); }
+    }
+  },
+
   async deduplicate(key, fetcher) {
     if (inFlightRequests.has(key)) return inFlightRequests.get(key);
     const promise = fetcher().finally(() => inFlightRequests.delete(key));
@@ -37,145 +71,216 @@ export const employeeService = {
   },
 
   async createEmployee(employeeData) {
-    const { data, error } = await supabase.from('employees').insert([employeeData]).select();
-    if (error) throw error;
-    return data[0];
+    const record = await pb.collection('employees').create(employeeData);
+    return mapRecord(record);
   },
 
   async updateEmployee(id, employeeData) {
-    const { data, error } = await supabase.from('employees').update(employeeData).eq('id', id).select();
-    if (error) throw error;
-    return data[0];
+    const existing = await pb.collection('employees').getFirstListItem(`sb_id="${id}"`);
+    const record = await pb.collection('employees').update(existing.id, employeeData);
+    return mapRecord(record);
   },
 
-  async getEmployees(columns = 'id, employee_id, name, department, position, daily_salary, is_active, employee_type') {
+  async getEmployees(columns = '') {
     return this.deduplicate(`list-${columns}`, async () => {
-      const { data, error } = await supabase.from('employees').select(columns).order('name', { ascending: true });
-      if (error) throw error;
-      return data;
+      const records = await pb.collection('employees').getFullList({ sort: 'name' });
+      return records.map(mapRecord);
     });
   },
 
   async getEmployeeBasicInfo() {
     return this.deduplicate('basic-info', async () => {
-      const { data, error } = await supabase.from('employees').select('id, name, position, daily_salary, employee_type').eq('is_active', true).order('name', { ascending: true });
-      if (error) throw error;
-      return data;
+      const records = await pb.collection('employees').getFullList({
+        filter: 'is_active=true',
+        sort: 'name',
+        fields: 'id,sb_id,name,position,daily_salary,employee_type'
+      });
+      return records.map(mapRecord);
     });
   },
 
   async getEmployeeById(id) {
-    const { data, error } = await supabase.from('employees').select('*').eq('id', id).single();
-    if (error) throw error;
-    return data;
+    const record = await pb.collection('employees').getFirstListItem(`sb_id="${id}"`);
+    return mapRecord(record);
   },
 
   async deleteEmployee(id) {
-    const { error } = await supabase.from('employees').delete().eq('id', id);
-    if (error) throw error;
+    try {
+      const existing = await pb.collection('employees').getFirstListItem(`sb_id="${id}"`);
+      await pb.collection('employees').delete(existing.id);
+    } catch(e) {
+      try { await pb.collection('employees').delete(id); } catch(e2) { throw new Error(e2.message); }
+    }
+  },
+
+
+  async getDeductionHistory(employeeId) {
+    const records = await pb.collection('employee_deductions').getFullList({
+      filter: 'employee_id="' + employeeId + '"',
+      sort: '-date'
+    });
+    return records.map(mapRecord);
+  },
+
+  async updateDeductionStatus(id, isProcessed) {
+    try {
+      const existing = await pb.collection('employee_deductions').getFirstListItem('sb_id="' + id + '"');
+      await pb.collection('employee_deductions').update(existing.id, { is_processed: isProcessed, processed_in_record_id: null });
+    } catch(e) {
+      await pb.collection('employee_deductions').update(id, { is_processed: isProcessed, processed_in_record_id: null });
+    }
   },
 
   async getPendingDeductions(employeeId) {
-    const { data, error } = await supabase
-      .from('employee_deductions')
-      .select('*')
-      .eq('employee_id', employeeId)
-      .eq('is_processed', false)
-      .order('date', { ascending: true });
-    if (error) throw error;
-    return data;
+    const records = await pb.collection('employee_deductions').getFullList({
+      filter: `employee_id="${employeeId}" && is_processed=false`,
+      sort: 'date'
+    });
+    return records.map(mapRecord);
   },
 
   async createDeduction(deductionData) {
-    const { data, error } = await supabase.from('employee_deductions').insert([deductionData]).select();
-    if (error) throw error;
-    return data[0];
+    const record = await pb.collection('employee_deductions').create(deductionData);
+    return mapRecord(record);
   },
 
   async deleteDeduction(id) {
-    const { error } = await supabase.from('employee_deductions').delete().eq('id', id);
-    if (error) throw error;
+    try {
+      const existing = await pb.collection('employee_deductions').getFirstListItem(`sb_id="${id}"`);
+      await pb.collection('employee_deductions').delete(existing.id);
+    } catch(e) {
+      try { await pb.collection('employee_deductions').delete(id); } catch(e2) { throw new Error(e2.message); }
+    }
   },
 
   async createPayRecord(payData, deductionIds = []) {
-    const { data: record, error: recordError } = await supabase.from('pay_records').insert([payData]).select().single();
-    if (recordError) throw recordError;
-    
+    const record = await pb.collection('pay_records').create(payData);
+    const mapped = mapRecord(record);
     if (deductionIds.length > 0) {
-      const { error: updateError } = await supabase
-        .from('employee_deductions')
-        .update({ is_processed: true, processed_in_record_id: record.id })
-        .in('id', deductionIds);
-      if (updateError) console.error('Failed to link deductions:', updateError);
+      for (const dedItem of deductionIds) {
+        try {
+          // dedItem can be an object {id, ...} or a plain id string
+          const dedId = typeof dedItem === 'object' ? dedItem.id : dedItem;
+          let dedPbId = dedId;
+          try {
+            const ded = await pb.collection('employee_deductions').getFirstListItem(`sb_id="${dedId}"`);
+            dedPbId = ded.id;
+          } catch(e) {
+            // use dedId directly as PB id
+          }
+          await pb.collection('employee_deductions').update(String(dedPbId), {
+            is_processed: true,
+            processed_in_record_id: mapped.id
+          });
+        } catch(e) { console.error('Failed to link deduction:', e); }
+      }
     }
-    return record;
+    return mapped;
   },
 
   async updatePayRecord(id, payData) {
-    const { data, error } = await supabase.from('pay_records').update(payData).eq('id', id).select();
-    if (error) throw error;
-    return data[0];
+    const existing = await pb.collection('pay_records').getFirstListItem(`sb_id="${id}"`);
+    const record = await pb.collection('pay_records').update(existing.id, payData);
+    return mapRecord(record);
   },
 
   async getPayRecordById(id) {
-    const { data, error } = await supabase.from('pay_records').select('*').eq('id', id).single();
-    if (error) throw error;
-    return data;
+    try {
+      const record = await pb.collection('pay_records').getFirstListItem(`sb_id="${id}"`);
+      return mapRecord(record);
+    } catch(e) {
+      const record = await pb.collection('pay_records').getOne(id);
+      return mapRecord(record);
+    }
   },
 
   async deletePayRecord(id) {
-    const { error } = await supabase.from('pay_records').delete().eq('id', id);
-    if (error) throw error;
+    try {
+      const existing = await pb.collection('pay_records').getFirstListItem(`sb_id="${id}"`);
+      await pb.collection('pay_records').delete(existing.id);
+    } catch(e) {
+      // Try deleting by PB id directly if sb_id lookup fails
+      try {
+        await pb.collection('pay_records').delete(id);
+      } catch(e2) {
+        throw new Error('Failed to delete pay record: ' + e2.message);
+      }
+    }
   },
 
   async getPayRecordsWithEmployees(limit = 1000) {
-    const { data, error } = await supabase.from('pay_records').select(`
-      id, pay_period, start_date, end_date, net_pay, employee_id, sss_contribution, 
-      philhealth_contribution, pagibig_contribution, thirteenth_month, thirteenth_month_days, basic_salary, 
-      overtime_hours, overtime_pay, late_deduction, undertime_deduction, reg_holiday_pay, 
-      spec_holiday_pay, holiday_pay, allowances, allowance_description, cash_advance, 
-      food_allowance, other_deductions, days_present, late_minutes, undertime_minutes, created_at,
-      employees (name, position, department, employee_id, employee_type, daily_salary)
-    `).order('start_date', { ascending: false }).limit(limit);
-    if (error) throw error;
-    return data;
+    const records = await pb.collection('pay_records').getFullList({
+      sort: '-start_date',
+      batch: limit
+    });
+    const employees = await pb.collection('employees').getFullList({
+      fields: 'id,sb_id,name,position,department,employee_id,employee_type,daily_salary'
+    });
+    const empMap = {};
+    employees.forEach(e => {
+      const mapped = mapRecord(e);
+      empMap[mapped.id] = mapped;
+    });
+    return records.map(r => {
+      const mapped = mapRecord(r);
+      mapped.employees = empMap[mapped.employee_id] || null;
+      return mapped;
+    });
   },
 
   async getPayRecords(employeeId, limit = 20) {
-    const { data, error } = await supabase.from('pay_records').select('*').eq('employee_id', employeeId).order('created_at', { ascending: false }).limit(limit);
-    if (error) throw error;
-    return data;
+    const records = await pb.collection('pay_records').getFullList({
+      filter: `employee_id="${employeeId}"`,
+      sort: '-created_at',
+      batch: limit
+    });
+    return records.map(mapRecord);
   },
 
   async getAttendance(employeeId, startDate, endDate) {
-    const { data, error } = await supabase.from('attendance').select('*').eq('employee_id', employeeId).gte('date', startDate).lte('date', endDate).order('date', { ascending: true });
-    if (error) throw error;
-    return data;
+    const records = await pb.collection('attendance').getFullList({
+      filter: `employee_id="${employeeId}" && date>="${startDate} 00:00:00.000Z" && date<="${endDate} 23:59:59.999Z"`,
+      sort: 'date'
+    });
+    return records.map(mapRecord);
   },
 
   async createAttendance(data) {
-    const { error } = await supabase.from('attendance').upsert({ ...data, modified_at: new Date().toISOString() }, { onConflict: 'employee_id, date' });
-    if (error) throw error;
+    const { employee_id, date } = data;
+    const timestamped = { ...data, modified_at: new Date().toISOString() };
+    try {
+      const existing = await pb.collection('attendance').getFirstListItem(
+        `employee_id="${employee_id}" && date="${date}"`
+      );
+      await pb.collection('attendance').update(existing.id, timestamped);
+    } catch(e) {
+      await pb.collection('attendance').create(timestamped);
+    }
   },
 
   async bulkCreateAttendance(records) {
-    const timestampedRecords = records.map(r => ({ ...r, modified_at: new Date().toISOString() }));
-    const { error } = await supabase.from('attendance').upsert(timestampedRecords, { onConflict: 'employee_id, date' });
-    if (error) throw error;
+    for (const data of records) {
+      await this.createAttendance(data);
+    }
   },
 
   async deleteAttendance(id) {
-    const { error } = await supabase.from('attendance').delete().eq('id', id);
-    if (error) throw error;
+    try {
+      const existing = await pb.collection('attendance').getFirstListItem(`sb_id="${id}"`);
+      await pb.collection('attendance').delete(existing.id);
+    } catch(e) {
+      try { await pb.collection('attendance').delete(id); } catch(e2) { throw new Error(e2.message); }
+    }
   },
 
   async deleteAttendanceRange(employeeId, startDate, endDate) {
-    const { error } = await supabase.from('attendance')
-      .delete()
-      .eq('employee_id', employeeId)
-      .gte('date', startDate)
-      .lte('date', endDate);
-    if (error) throw error;
+    const records = await pb.collection('attendance').getFullList({
+      filter: `employee_id="${employeeId}" && date>="${startDate}" && date<="${endDate}"`,
+      fields: 'id'
+    });
+    for (const r of records) {
+      await pb.collection('attendance').delete(r.id);
+    }
   },
 
   async getAttendanceSummary(employeeId, startDate, endDate) {
@@ -202,11 +307,7 @@ export const employeeService = {
       if (log.check_in_time && isPresent) {
         const [h, m] = log.check_in_time.split(':').map(Number);
         checkinMins = (h * 60) + m;
-        
-        // Weight Adjustment for Half Days
-        if (checkinMins >= LUNCH_START) {
-          dayWeight = 0.5;
-        }
+        if (checkinMins >= LUNCH_START) dayWeight = 0.5;
       }
 
       if (log.check_out_time && isPresent) {
@@ -214,9 +315,10 @@ export const employeeService = {
         checkoutMins = (h * 60) + m;
       }
 
-      // 13th Month Eligibility
-      // Criteria: Present, Not a afternoon-only half day, and total undertime < 4 hours
-      const isEligibleFor13th = isPresent && checkinMins < LUNCH_START && (log.undertime_minutes || 0) < 240;
+      // Check if the date is a Sunday
+      const logDate = new Date(log.date);
+      const isSunday = logDate.getDay() === 0;
+      const isEligibleFor13th = isPresent && checkinMins < LUNCH_START && (log.undertime_minutes || 0) < 240 && !isSunday;
 
       if (holiday) {
         if (holiday.type === 'regular') {
@@ -228,16 +330,10 @@ export const employeeService = {
         stats.regularDaysPresent += dayWeight;
       }
 
-      if (isEligibleFor13th) {
-        stats.thirteenthMonthDays++;
-      }
-
-      // Late & Undertime (Logic already factors lunch if calculated via calculateMinutesExcludingLunch)
-      // Since logs now store pre-calculated lunch-excluded minutes, we just sum them.
+      if (isEligibleFor13th) stats.thirteenthMonthDays++;
       stats.totalLateMinutes += (log.late_minutes || 0);
       stats.totalUndertimeMinutes += (log.undertime_minutes || 0);
-      
-      // Overtime Calculation
+
       if (isPresent) {
         if (checkinMins < SHIFT_START) stats.totalOvertimeMinutes += (SHIFT_START - checkinMins);
         if (checkoutMins > SHIFT_END) stats.totalOvertimeMinutes += (checkoutMins - SHIFT_END);

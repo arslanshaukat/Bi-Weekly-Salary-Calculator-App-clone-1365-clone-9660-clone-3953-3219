@@ -25,10 +25,10 @@ const PayslipDetail = lazy(() => import('./components/PayslipDetail'));
 const UserManagement = lazy(() => import('./components/UserManagement'));
 const UserProfile = lazy(() => import('./components/UserProfile'));
 const FinancialSummary = lazy(() => import('./components/FinancialSummary'));
+const HolidaySettings = lazy(() => import('./components/HolidaySettings'));
 
 const { FiAlertTriangle } = FiIcons;
 
-// Component to handle redirection for restricted users like Mel
 const RootRedirect = () => {
   const { user } = useAuth();
   if (user?.email === 'gtsubic@gmail.com') {
@@ -44,7 +44,6 @@ function App() {
         <div className="min-h-screen bg-gray-50 flex flex-col">
           <SystemHeartbeat />
           <ActivityWatcher />
-          
           {!isSupabaseConfigured && (
             <div className="bg-orange-600 text-white px-4 py-3 shadow-md relative z-50">
               <div className="container mx-auto flex items-center justify-center space-x-2">
@@ -53,65 +52,26 @@ function App() {
               </div>
             </div>
           )}
-
           <Header />
-
           <main className="container mx-auto px-4 py-8 flex-grow">
             <Suspense fallback={<Loading />}>
               <Routes>
-                {/* Public Routes */}
                 <Route path="/pulse" element={<PublicPulse />} />
                 <Route path="/login" element={<Login />} />
-
-                {/* Protected Routes */}
                 <Route path="/" element={<RootRedirect />} />
-                
-                <Route path="/calculate" element={
-                  <ProtectedRoute requirePermission="manage_payroll">
-                    <EmployeeForm />
-                  </ProtectedRoute>
-                } />
-                
-                <Route path="/results" element={
-                  <ProtectedRoute requirePermission="manage_payroll">
-                    <CalculationResults />
-                  </ProtectedRoute>
-                } />
-                
-                <Route path="/attendance" element={
-                  <ProtectedRoute requirePermission="manage_attendance">
-                    <AttendanceTracker />
-                  </ProtectedRoute>
-                } />
-                
-                <Route path="/employee/:employeeId" element={
-                  <ProtectedRoute requirePermission="manage_employees">
-                    <EmployeeDetail />
-                  </ProtectedRoute>
-                } />
-                
-                <Route path="/results/:payRecordId" element={
-                  <ProtectedRoute requirePermission="manage_payroll">
-                    <PayslipDetail />
-                  </ProtectedRoute>
-                } />
-                
+                <Route path="/calculate" element={<ProtectedRoute requirePermission="manage_payroll"><EmployeeForm /></ProtectedRoute>} />
+                <Route path="/results" element={<ProtectedRoute requirePermission="manage_payroll"><CalculationResults /></ProtectedRoute>} />
+                <Route path="/attendance" element={<ProtectedRoute requirePermission="manage_attendance"><AttendanceTracker /></ProtectedRoute>} />
+                <Route path="/employee/:employeeId" element={<ProtectedRoute requirePermission="manage_employees"><EmployeeDetail /></ProtectedRoute>} />
+                <Route path="/results/:payRecordId" element={<ProtectedRoute requirePermission="manage_payroll"><PayslipDetail /></ProtectedRoute>} />
                 <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
-                
-                <Route path="/summary" element={
-                  <ProtectedRoute requirePermission="manage_payroll">
-                    <FinancialSummary />
-                  </ProtectedRoute>
-                } />
-                
+                <Route path="/summary" element={<ProtectedRoute requirePermission="manage_payroll"><FinancialSummary /></ProtectedRoute>} />
+                <Route path="/holidays" element={<ProtectedRoute requirePermission="manage_payroll"><HolidaySettings /></ProtectedRoute>} />
                 <Route path="/users" element={<ProtectedRoute requireAdmin={true}><UserManagement /></ProtectedRoute>} />
-
-                {/* Catch-all redirect to dashboard */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
           </main>
-
           <ToastContainer position="top-right" autoClose={3000} theme="colored" pauseOnHover closeOnClick />
         </div>
       </Router>

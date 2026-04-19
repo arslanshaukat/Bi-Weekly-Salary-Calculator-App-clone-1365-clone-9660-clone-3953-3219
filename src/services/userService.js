@@ -1,14 +1,24 @@
 import { supabase } from '../supabase.js';
+import { pb } from '../supabase.js';
+
+function mapRecord(record) {
+  const r = { ...record };
+  if (r.sb_id) { r.id = r.sb_id; delete r.sb_id; }
+  delete r.collectionId;
+  delete r.collectionName;
+  return r;
+}
 
 export const userService = {
   async updateProfile(userId, updates) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .upsert({ id: userId, ...updates, updated_at: new Date() })
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+    try {
+      const existing = await pb.collection('profiles').getFirstListItem(`sb_id="${userId}"`);
+      const record = await pb.collection('profiles').update(existing.id, { ...updates, updated_at: new Date().toISOString() });
+      return mapRecord(record);
+    } catch(e) {
+      const record = await pb.collection('profiles').create({ id: userId, sb_id: userId, ...updates });
+      return mapRecord(record);
+    }
   },
 
   async updateEmail(newEmail) {
@@ -23,35 +33,20 @@ export const userService = {
     return data;
   },
 
-  // Optimized: Select only necessary columns for the table view
   async getAllUsers() {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, role, permissions, created_at')
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    return data;
+    const records = await pb.collection('profiles').getFullList({ sort: '-created_at' });
+    return records.map(mapRecord);
   },
 
   async updateUserRole(userId, role) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .update({ role })
-      .eq('id', userId)
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+    const existing = await pb.collection('profiles').getFirstListItem(`sb_id="${userId}"`);
+    const record = await pb.collection('profiles').update(existing.id, { role });
+    return mapRecord(record);
   },
 
   async updateUserPermissions(userId, permissions) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .update({ permissions })
-      .eq('id', userId)
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+    const existing = await pb.collection('profiles').getFirstListItem(`sb_id="${userId}"`);
+    const record = await pb.collection('profiles').update(existing.id, { permissions });
+    return mapRecord(record);
   }
 };

@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 // Removed alias configuration causing ESM __dirname error
 export default defineConfig({
   plugins: [react()],
-  base: './',
+  base: '/',
   server: {
     historyApiFallback: true,
   },
