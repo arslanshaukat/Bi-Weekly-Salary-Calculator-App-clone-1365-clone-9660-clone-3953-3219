@@ -28,7 +28,7 @@ const EmployeeForm = () => {
     manualDays: existingRecord?.days_present?.toString() || '0',
     manualRegHolidays: existingRecord?.reg_holiday_pay ? (existingRecord.reg_holiday_pay / (existingRecord.basic_salary / existingRecord.days_present)).toString() : '0',
     manualSpecHolidays: '0',
-    lateMinutes: existingRecord?.late_minutes?.toString() || '0',
+    lateMinutes: '0', // will be recalculated from attendance
     undertimeMinutes: existingRecord?.undertime_minutes?.toString() || '0',
     overtimeMinutes: ((existingRecord?.overtime_hours || 0) * 60).toString(),
     otherAllowances: existingRecord?.allowances?.toString() || '0',
@@ -36,7 +36,9 @@ const EmployeeForm = () => {
     sssContribution: existingRecord?.sss_contribution?.toString() || '0',
     philHealthContribution: existingRecord?.philhealth_contribution?.toString() || '0',
     pagIbigContribution: existingRecord?.pagibig_contribution?.toString() || '0',
-    otherDeductions: existingRecord?.other_deductions?.toString() || '0'
+    otherDeductions: existingRecord?.other_deductions?.toString() || '0',
+    thirteenthMonth: existingRecord?.thirteenth_month?.toString() || '0',
+    thirteenthMonthDays: existingRecord?.thirteenth_month_days?.toString() || '0'
   };
 
   const [formData, setFormData] = useState(initialFormState);
@@ -59,20 +61,27 @@ const EmployeeForm = () => {
     const syncAttendanceData = async () => {
       if (selectedEmployee && formData.payPeriodStart && formData.payPeriodEnd) {
         try {
-          if (!isEditPayroll) {
+          {
             const stats = await employeeService.getAttendanceSummary(
               selectedEmployee.id,
               formData.payPeriodStart,
               formData.payPeriodEnd
             );
+            // Calculate 13th month based on daily salary and eligible days
+            const dailySal = Number(selectedEmployee.daily_salary || 0);
+            const thirteenthAmt = dailySal > 0 ? Math.round((dailySal * stats.thirteenthMonthDays / 12) * 100) / 100 : 0;
+            // Days present = ONLY regular working days (holidays paid separately via reg/spec holiday pay)
+            const totalDaysPresent = (stats.regularDaysPresent || 0);
             setFormData(prev => ({
               ...prev,
-              manualDays: (stats.regularDaysPresent).toString(),
+              manualDays: totalDaysPresent.toString(),
               lateMinutes: (stats.totalLateMinutes || 0).toString(),
               overtimeMinutes: (stats.totalOvertimeMinutes || 0).toString(),
               undertimeMinutes: (stats.totalUndertimeMinutes || 0).toString(),
               manualRegHolidays: (stats.regularHolidaysPresent || 0).toString(),
               manualSpecHolidays: (selectedEmployee.employee_type === 'Full Time') ? (stats.specialHolidaysPresent || 0).toString() : '0',
+              thirteenthMonthDays: (stats.thirteenthMonthDays || 0).toString(),
+              thirteenthMonth: thirteenthAmt.toString(),
             }));
           }
           const deductions = await employeeService.getPendingDeductions(
@@ -162,7 +171,9 @@ const EmployeeForm = () => {
         other_deductions: other,
         gross_pay: grossPay,
         net_pay: netPay,
-        applied_deductions: finalApplied
+        applied_deductions: finalApplied,
+        thirteenth_month: round(Number(formData.thirteenthMonth || 0)),
+        thirteenth_month_days: Number(formData.thirteenthMonthDays || 0)
       };
 
       if (isEditPayroll && existingRecord) {
@@ -281,6 +292,14 @@ const EmployeeForm = () => {
                   <div className="pt-4">
                     <label className="block text-[10px] font-black text-gray-400 mb-2 uppercase tracking-widest">Other Deductions</label>
                     <input type="number" value={formData.otherDeductions} onChange={(e) => setFormData(p => ({ ...p, otherDeductions: e.target.value }))} className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl font-black bg-white" placeholder="0.00" />
+                  </div>
+                  <div className="pt-4">
+                    <label className="block text-[10px] font-black text-green-600 mb-2 uppercase tracking-widest">13th Month Pay</label>
+                    <input type="number" value={formData.thirteenthMonth} onChange={(e) => setFormData(p => ({ ...p, thirteenthMonth: e.target.value }))} className="w-full px-5 py-4 border-2 border-green-200 rounded-2xl font-black bg-white" placeholder="0.00" />
+                  </div>
+                  <div className="pt-2">
+                    <label className="block text-[10px] font-black text-green-600 mb-2 uppercase tracking-widest">13th Month Days Counted</label>
+                    <input type="number" value={formData.thirteenthMonthDays} onChange={(e) => setFormData(p => ({ ...p, thirteenthMonthDays: e.target.value }))} className="w-full px-5 py-4 border-2 border-green-200 rounded-2xl font-black bg-white" placeholder="0" />
                   </div>
                 </div>
 

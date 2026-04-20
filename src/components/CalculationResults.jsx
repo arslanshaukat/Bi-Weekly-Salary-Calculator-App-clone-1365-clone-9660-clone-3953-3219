@@ -326,7 +326,7 @@ const CalculationResults = () => {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {filteredRecords.map(record => {
-              const forensicNetPay = calculateNetPay(record);
+              const forensicNetPay = Number(record.net_pay || 0);
               return (
                 <tr key={record.id} className={`hover:bg-blue-50/30 transition-colors ${selectedRecordIds.includes(record.id) ? 'bg-blue-50/50' : ''}`}>
                   <td className="px-6 py-4 text-center">

@@ -179,7 +179,7 @@ const EmployeeDetail = () => {
             </div>
           </div>
           <div className="flex space-x-3">
-            <Link to="/calculate" state={{ employee, isEditEmployee: true }} className="bg-white border-2 border-gray-100 text-gray-600 px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-gray-50 transition-all shadow-sm">Edit Profile</Link>
+            <Link to={`/employees?edit=${employee?.id}`} className="bg-white border-2 border-gray-100 text-gray-600 px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-gray-50 transition-all shadow-sm">Edit Profile</Link>
             <Link to="/calculate" state={{ employee }} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-2xl shadow-blue-100 hover:bg-blue-700 transition-all">Process Payroll</Link>
           </div>
         </div>
@@ -470,6 +470,8 @@ const EmployeeDetail = () => {
                       { label: 'PhilHealth Number', value: employee?.philhealth_number || '—' },
                       { label: 'Pag-IBIG Number', value: employee?.pagibig_number || '—' },
                       { label: 'Bank Account', value: employee?.bank_account || '—' },
+                  { label: 'Cellphone', value: employee?.cellphone || '—' },
+                  { label: 'Facebook', value: employee?.facebook || '—' },
                       { label: 'Notes', value: employee?.notes || '—' },
                     ].map((item, i) => (
                       <tr key={i} className="hover:bg-blue-50/20 transition-colors">

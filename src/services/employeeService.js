@@ -259,13 +259,21 @@ export const employeeService = {
 
   async createAttendance(data) {
     const { employee_id, date } = data;
-    const timestamped = { ...data, modified_at: new Date().toISOString() };
+    const { id, collectionId, collectionName, ...cleanData } = data;
+    const timestamped = { ...cleanData, modified_at: new Date().toISOString() };
+    // Normalize date for filter - handle both YYYY-MM-DD and full timestamp formats
+    const datePrefix = date.split(' ')[0].split('T')[0];
     try {
       const existing = await pb.collection('attendance').getFirstListItem(
-        `employee_id="${employee_id}" && date="${date}"`
+        `employee_id="${employee_id}" && date>="${datePrefix} 00:00:00.000Z" && date<="${datePrefix} 23:59:59.999Z"`
       );
       await pb.collection('attendance').update(existing.id, timestamped);
     } catch(e) {
+      // Record doesn't exist, create it
+      // Ensure date is in correct format
+      if (!timestamped.date.includes(' ')) {
+        timestamped.date = `${datePrefix} 00:00:00.000Z`;
+      }
       await pb.collection('attendance').create(timestamped);
     }
   },
@@ -312,6 +320,9 @@ export const employeeService = {
     attendance.forEach(log => {
       const holiday = getHoliday(log.date);
       const isPresent = ['present', 'late', 'holiday', 'undertime'].includes(log.status);
+      const isHolidayOffRegular = log.status === 'holiday_off_regular';
+      const isHolidayOffSpecial = log.status === 'holiday_off_special';
+      const isHolidayOff = isHolidayOffRegular || isHolidayOffSpecial;
       let dayWeight = 1.0;
       let checkinMins = 0;
       let checkoutMins = 0;
@@ -334,16 +345,32 @@ export const employeeService = {
 
       if (holiday) {
         if (holiday.type === 'regular') {
-          isPresent ? stats.regularHolidaysPresent += dayWeight : stats.regularHolidaysAbsent++;
+          if (isPresent) {
+            // Worked on regular holiday - counts as regular day present + holiday pay
+            stats.regularDaysPresent += dayWeight;
+            stats.regularHolidaysPresent += dayWeight;
+          } else if (isHolidayOffRegular) {
+            // Off on regular holiday - paid 1x via reg_holiday_pay, NOT in basic salary
+            stats.regularHolidaysPresent += 1;
+          } else {
+            stats.regularHolidaysAbsent++;
+          }
         } else {
-          isPresent ? stats.specialHolidaysPresent += dayWeight : null;
+          if (isPresent) stats.specialHolidaysPresent += dayWeight;
+          // holiday_off_special = no pay, not counted
         }
       } else if (isPresent) {
         stats.regularDaysPresent += dayWeight;
       }
 
       if (isEligibleFor13th) stats.thirteenthMonthDays++;
-      stats.totalLateMinutes += (log.late_minutes || 0);
+      // If clocked in at/after noon = half day (dayWeight 0.5)
+      // Salary already halved so skip late minutes to avoid double penalty
+      if (checkinMins >= LUNCH_START) {
+        stats.totalLateMinutes += 0;
+      } else {
+        stats.totalLateMinutes += (log.late_minutes || 0);
+      }
       stats.totalUndertimeMinutes += (log.undertime_minutes || 0);
 
       if (isPresent) {

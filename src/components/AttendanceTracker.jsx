@@ -200,10 +200,13 @@ const AttendanceTracker = () => {
     e.preventDefault();
     if (!editingLog) return;
 
-    const [inH, inM] = editForm.check_in_time.split(':').map(Number);
-    const checkinMins = (inH * 60) + inM;
-    const [outH, outM] = editForm.check_out_time.split(':').map(Number);
-    const checkoutMins = (outH * 60) + outM;
+    const parseTime = (t) => {
+      if (!t || !t.includes(':')) return 0;
+      const [h, m] = t.split(':').map(Number);
+      return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+    };
+    const checkinMins = parseTime(editForm.check_in_time);
+    const checkoutMins = parseTime(editForm.check_out_time) || (8 * 60 + 17 * 60);
 
     const lateMinutes = (checkinMins > SHIFT_START) ? calculateMinutesExcludingLunch(SHIFT_START, checkinMins) : 0;
     const undertimeMinutes = (checkoutMins < SHIFT_END && editForm.status !== 'absent' && editForm.status !== 'holiday') ? calculateMinutesExcludingLunch(checkoutMins, SHIFT_END) : 0;
@@ -249,6 +252,8 @@ const AttendanceTracker = () => {
       case 'late': return 'bg-yellow-50 text-yellow-700 border-yellow-100';
       case 'undertime': return 'bg-orange-50 text-orange-700 border-orange-100';
       case 'holiday': return 'bg-blue-600 text-white border-blue-700';
+      case 'holiday_off_regular': return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'holiday_off_special': return 'bg-pink-50 text-pink-600 border-pink-200';
       default: return 'bg-gray-50 text-gray-400 border-gray-100';
     }
   };
@@ -331,7 +336,7 @@ const AttendanceTracker = () => {
                       {record ? (
                         <div className="space-y-2">
                           <span className={`block text-[9px] font-black uppercase px-3 py-1.5 rounded-xl text-center border transition-all ${getStatusStyle(record.status)}`}>
-                            {record.status}
+                            {record.status === 'holiday_off_regular' ? 'HOL-OFF(R)' : record.status === 'holiday_off_special' ? 'HOL-OFF(S)' : record.status}
                           </span>
                           {(record.late_minutes > 0 || record.undertime_minutes > 0) && (
                             <span className="block text-[8px] font-black text-red-500 text-center uppercase tracking-tighter">
@@ -430,7 +435,7 @@ const AttendanceTracker = () => {
                 <div>
                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Daily Status</label>
                    <div className="grid grid-cols-2 gap-3">
-                      {['present', 'absent', 'late', 'holiday', 'undertime'].map(s => (
+                      {['present', 'absent', 'late', 'undertime', 'holiday', 'holiday_off_regular', 'holiday_off_special'].map(s => (
                         <button 
                           key={s} 
                           type="button" 
@@ -439,7 +444,7 @@ const AttendanceTracker = () => {
                             editForm.status === s ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-gray-50 border-gray-100 text-gray-400 hover:border-blue-200'
                           }`}
                         >
-                          {s}
+                          {s === 'holiday_off_regular' ? 'Holiday Off (Regular)' : s === 'holiday_off_special' ? 'Holiday Off (Special)' : s === 'holiday' ? 'Holiday (Worked)' : s}
                         </button>
                       ))}
                    </div>

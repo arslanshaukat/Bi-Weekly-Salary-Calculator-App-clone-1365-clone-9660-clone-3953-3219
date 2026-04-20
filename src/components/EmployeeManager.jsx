@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { employeeService } from '../services/employeeService';
 import { toast } from 'react-toastify';
 import SafeIcon from '../common/SafeIcon';
@@ -35,6 +35,7 @@ const Field = ({ label, name, form, setForm, type = 'text', options }) => (
 
 export default function EmployeeManager() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -46,6 +47,15 @@ export default function EmployeeManager() {
   const [filterType, setFilterType] = useState('');
 
   useEffect(() => { loadEmployees(); }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const editId = params.get('edit');
+    if (editId && employees.length > 0) {
+      const emp = employees.find(e => e.id === editId || e.sb_id === editId);
+      if (emp) openEdit(emp);
+    }
+  }, [location.search, employees]);
 
   async function loadEmployees() {
     setLoading(true);
@@ -88,6 +98,8 @@ export default function EmployeeManager() {
       sss_number: emp.sss_number || '',
       philhealth_number: emp.philhealth_number || '',
       pagibig_number: emp.pagibig_number || '',
+      cellphone: emp.cellphone || '',
+      facebook: emp.facebook || '',
       notes: emp.notes || '',
       is_active: emp.is_active !== false
     });
@@ -257,6 +269,8 @@ export default function EmployeeManager() {
                 <Field form={form} setForm={setForm} label="SSS Number" name="sss_number" />
                 <Field form={form} setForm={setForm} label="PhilHealth Number" name="philhealth_number" />
                 <Field form={form} setForm={setForm} label="Pag-IBIG Number" name="pagibig_number" />
+            <Field form={form} setForm={setForm} label="Cellphone Number" name="cellphone" type="tel" />
+            <Field form={form} setForm={setForm} label="Facebook Profile Link" name="facebook" />
                 <div>
                   <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 block mb-2">Status</label>
                   <select value={form.is_active} onChange={e => setForm(f => ({ ...f, is_active: e.target.value === 'true' }))}

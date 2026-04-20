@@ -133,17 +133,17 @@ const PayslipDetail = () => {
       amount: Math.round(log.undertime_minutes * minuteRate * 100) / 100
     }));
 
-    const totalEarnings = payRecord.basic_salary + payRecord.overtime_pay + payRecord.reg_holiday_pay + payRecord.spec_holiday_pay + (payRecord.allowances || 0);
+    const totalEarnings = Number(payRecord.gross_pay || 0);
     const statutory = (payRecord.sss_contribution || 0) + (payRecord.philhealth_contribution || 0) + (payRecord.pagibig_contribution || 0);
     const debtTotal = (payRecord.applied_deductions || []).reduce((sum, d) => sum + d.amount, 0);
-    const totalDeductions = lateLogs.reduce((s, l) => s + l.amount, 0) + utLogs.reduce((s, u) => s + u.amount, 0) + statutory + debtTotal + (payRecord.other_deductions || 0);
+    const totalDeductions = statutory + debtTotal + (payRecord.other_deductions || 0);
 
     return {
       expectedDays, expectedSalary, absentDates: absentDatesList, 
       absenceDeduction: absentDatesList.length * dailyRate,
       fullDays, halfDays, holidayBreakdown,
       otLogs, lateLogs, utLogs,
-      totalEarnings, totalDeductions, netPay: totalEarnings - totalDeductions,
+      totalEarnings, totalDeductions, netPay: Number(payRecord.net_pay || 0),
       statutory, debtTotal, dailyRate
     };
   }, [payRecord, employee, attendance, holidays]);
