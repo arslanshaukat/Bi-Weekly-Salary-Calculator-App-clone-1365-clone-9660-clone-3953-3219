@@ -78,7 +78,9 @@ const EmployeeForm = () => {
               lateMinutes: (stats.totalLateMinutes || 0).toString(),
               overtimeMinutes: (stats.totalOvertimeMinutes || 0).toString(),
               undertimeMinutes: (stats.totalUndertimeMinutes || 0).toString(),
-              manualRegHolidays: (stats.regularHolidaysPresent || 0).toString(),
+              manualRegHolidays: (selectedEmployee.employee_type === 'Full Time') 
+                ? (stats.regularHolidaysPresent || 0).toString()
+                : (stats.regularHolidaysWorked || 0).toString(),
               manualSpecHolidays: (selectedEmployee.employee_type === 'Full Time') ? (stats.specialHolidaysPresent || 0).toString() : '0',
               thirteenthMonthDays: (stats.thirteenthMonthDays || 0).toString(),
               thirteenthMonth: thirteenthAmt.toString(),
@@ -125,7 +127,9 @@ const EmployeeForm = () => {
       const isFullTime = formData.employee_type === 'Full Time';
 
       const basicPay = round(dailySalary * (Number(formData.manualDays) || 0));
-      const regHolidayPay = round((Number(formData.manualRegHolidays) || 0) * dailySalary);
+      const regHolidayPay = isFullTime 
+        ? round((Number(formData.manualRegHolidays) || 0) * dailySalary)
+        : 0; // Non-full-time: no holiday pay when off, worked holidays already in basic days
       const specHolidayPay = isFullTime ? round((Number(formData.manualSpecHolidays) || 0) * dailySalary * 0.3) : 0;
       const otPay = round(Number(formData.overtimeMinutes || 0) * minuteRate);
       const allowances = round(Number(formData.otherAllowances || 0));

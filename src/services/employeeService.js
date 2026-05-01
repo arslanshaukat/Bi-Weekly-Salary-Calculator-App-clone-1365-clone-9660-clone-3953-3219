@@ -305,9 +305,16 @@ export const employeeService = {
 
   async getAttendanceSummary(employeeId, startDate, endDate) {
     const attendance = await this.getAttendance(employeeId, startDate, endDate);
+    // Fetch holidays from PocketBase (not hardcoded list)
+    const holidayRecords = await this.getHolidays();
+    const pbHolidayMap = {};
+    holidayRecords.forEach(h => { pbHolidayMap[h.date] = { name: h.name, type: h.type }; });
+    const getHolidayFromPB = (dateStr) => pbHolidayMap[dateStr] || null;
+
     let stats = {
       regularDaysPresent: 0,
       regularHolidaysPresent: 0,
+      regularHolidaysWorked: 0,
       regularHolidaysAbsent: 0,
       specialHolidaysPresent: 0,
       totalLateMinutes: 0,
@@ -318,7 +325,7 @@ export const employeeService = {
     };
 
     attendance.forEach(log => {
-      const holiday = getHoliday(log.date);
+      const holiday = getHolidayFromPB(log.date);
       const isPresent = ['present', 'late', 'holiday', 'undertime'].includes(log.status);
       const isHolidayOffRegular = log.status === 'holiday_off_regular';
       const isHolidayOffSpecial = log.status === 'holiday_off_special';
@@ -349,8 +356,9 @@ export const employeeService = {
             // Worked on regular holiday - counts as regular day present + holiday pay
             stats.regularDaysPresent += dayWeight;
             stats.regularHolidaysPresent += dayWeight;
+            stats.regularHolidaysWorked += dayWeight;
           } else if (isHolidayOffRegular) {
-            // Off on regular holiday - paid 1x via reg_holiday_pay, NOT in basic salary
+            // Off on regular holiday - paid 1x via reg_holiday_pay, NOT in basic salary (Full Time only)
             stats.regularHolidaysPresent += 1;
           } else {
             stats.regularHolidaysAbsent++;

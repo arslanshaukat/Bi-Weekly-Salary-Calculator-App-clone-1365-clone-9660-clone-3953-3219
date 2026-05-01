@@ -29,7 +29,7 @@ const PayslipDetail = () => {
         if (record) {
           const [emp, logs, holidayList] = await Promise.all([
             employeeService.getEmployeeById(record.employee_id),
-            employeeService.getAttendance(record.employee_id, record.start_date, record.end_date),
+            employeeService.getAttendance(record.employee_id, record.start_date.split(' ')[0].split('T')[0], record.end_date.split(' ')[0].split('T')[0]),
             employeeService.getHolidays()
           ]);
           setEmployee(emp);
@@ -78,23 +78,24 @@ const PayslipDetail = () => {
       const dateStr = format(day, 'yyyy-MM-dd');
       const holiday = holidayMap[dateStr];
       const log = attendanceMap[dateStr];
-      const isWorking = log && ['present', 'late', 'undertime'].includes(log.status);
+      const isWorking = log && ['present', 'late', 'undertime', 'holiday'].includes(log.status);
 
       if (holiday) {
         let multiplier = 0;
         if (isFullTime) {
           multiplier = holiday.type === 'regular' ? (isWorking ? 2.0 : 1.0) : (isWorking ? 1.3 : 0);
+          if (multiplier > 0) {
+            holidayBreakdown.push({
+              date: dateStr,
+              name: holiday.name,
+              type: holiday.type,
+              status: isWorking ? 'Worked' : 'Off',
+              amount: dailyRate * multiplier
+            });
+          }
         } else {
-          multiplier = isWorking ? 1.0 : 0;
-        }
-        if (multiplier > 0) {
-          holidayBreakdown.push({
-            date: dateStr,
-            name: holiday.name,
-            type: holiday.type,
-            status: isWorking ? 'Worked' : 'Off',
-            amount: dailyRate * multiplier
-          });
+          // Non-full-time: only paid if worked, counted as regular day (no holiday premium)
+          if (isWorking) fullDays += 1;
         }
       } else {
         if (isWorking || (log && log.status === 'holiday')) {
@@ -113,11 +114,31 @@ const PayslipDetail = () => {
       }
     });
 
-    const otLogs = attendance.filter(log => (log.overtime_hours || 0) > 0).map(log => ({
-      date: log.date,
-      minutes: Math.round(log.overtime_hours * 60),
-      amount: Math.round(log.overtime_hours * 60 * minuteRate * 100) / 100
-    }));
+    const SHIFT_END_MINS = 17 * 60;
+    const attendanceOtLogs = attendance
+      .filter(log => {
+        if ((log.overtime_hours || 0) > 0) return true;
+        if (log.check_out_time) {
+          const parts = log.check_out_time.split(':').map(Number);
+          return ((parts[0]||0)*60+(parts[1]||0)) > SHIFT_END_MINS;
+        }
+        return false;
+      })
+      .map(log => {
+        let otMins = Math.round((log.overtime_hours||0)*60);
+        if (otMins === 0 && log.check_out_time) {
+          const parts = log.check_out_time.split(':').map(Number);
+          otMins = Math.max(0, (parts[0]||0)*60+(parts[1]||0) - SHIFT_END_MINS);
+        }
+        return { date: log.date, minutes: otMins, amount: Math.round(otMins*minuteRate*100)/100 };
+      })
+      .filter(log => log.minutes > 0);
+    const otLogs = attendanceOtLogs.length > 0 ? attendanceOtLogs :
+      (payRecord.overtime_pay > 0) ? [{
+        date: payRecord.start_date,
+        minutes: Math.round((payRecord.overtime_hours||0)*60),
+        amount: payRecord.overtime_pay||0
+      }] : [];
 
     const lateLogs = attendance
       .filter(log => (log.late_minutes || 0) > 0 && !halfDayDates.has(log.date))
@@ -133,17 +154,27 @@ const PayslipDetail = () => {
       amount: Math.round(log.undertime_minutes * minuteRate * 100) / 100
     }));
 
-    const totalEarnings = Number(payRecord.gross_pay || 0);
+    // Recalculate from display components so non-fulltime holiday exclusion is reflected
+    const attendanceEarnings = 
+      (fullDays * dailyRate) + 
+      (halfDays * dailyRate * 0.5) +
+      holidayBreakdown.reduce((s, h) => s + h.amount, 0);
+    const otEarnings = otLogs.reduce((s, o) => s + o.amount, 0);
+    const allowanceEarnings = Number(payRecord.allowances || 0);
+    const calculatedEarnings = attendanceEarnings + otEarnings + allowanceEarnings;
+    // Fall back to stored gross_pay if no attendance records available
+    const storedGross = Number(payRecord.gross_pay || 0) + Number(payRecord.late_deduction || 0) + Number(payRecord.undertime_deduction || 0);
+    const totalEarnings = attendance.length > 0 ? calculatedEarnings : storedGross;
     const statutory = (payRecord.sss_contribution || 0) + (payRecord.philhealth_contribution || 0) + (payRecord.pagibig_contribution || 0);
     const debtTotal = (payRecord.applied_deductions || []).reduce((sum, d) => sum + d.amount, 0);
-    const totalDeductions = statutory + debtTotal + (payRecord.other_deductions || 0);
+    const totalDeductions = statutory + debtTotal + (payRecord.other_deductions || 0) + (payRecord.late_deduction || 0) + (payRecord.undertime_deduction || 0);
 
     return {
       expectedDays, expectedSalary, absentDates: absentDatesList, 
       absenceDeduction: absentDatesList.length * dailyRate,
       fullDays, halfDays, holidayBreakdown,
       otLogs, lateLogs, utLogs,
-      totalEarnings, totalDeductions, netPay: Number(payRecord.net_pay || 0),
+      totalEarnings, totalDeductions, netPay: totalEarnings - totalDeductions,
       statutory, debtTotal, dailyRate
     };
   }, [payRecord, employee, attendance, holidays]);
@@ -151,116 +182,147 @@ const PayslipDetail = () => {
   const renderPrintCopy = (copyLabel) => {
     if (!audit) return null;
     return (
-      <div className="payslip-print-block">
-        <div className="copy-label">{copyLabel}</div>
-        <div className="text-center border-b-2 border-black pb-1 mb-2">
-          <h1 className="text-lg font-black uppercase tracking-tight">GT International</h1>
-          <p className="text-[7px] font-bold uppercase tracking-widest">Official Payroll Ledger • Cycle Audit</p>
+      <div className="payslip-print-block" style={{fontFamily:'Arial,sans-serif',fontSize:'10px',color:'#000',display:'flex',flexDirection:'column'}}>
+        
+        {/* Header */}
+        <div style={{textAlign:'center',borderBottom:'3px solid #000',paddingBottom:'6px',marginBottom:'8px'}}>
+          <div style={{fontSize:'18px',fontWeight:'900',textTransform:'uppercase',letterSpacing:'4px'}}>GT INTERNATIONAL</div>
+          <div style={{fontSize:'7px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'3px',color:'#555',marginTop:'2px'}}>O F F I C I A L   P A Y R O L L   L E D G E R   &bull;   C Y C L E   A U D I T</div>
+          <div style={{textAlign:'right',fontSize:'7px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'1px',marginTop:'2px',color:'#888'}}>{copyLabel}</div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 text-left border-b border-black pb-1 mb-2">
+        {/* Employee Info Header */}
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:'10px'}}>
           <div>
-            <p className="text-[8px] font-black uppercase">Personnel</p>
-            <p className="text-xs font-black uppercase leading-none">{employee.name}</p>
-            <p className="text-[7px] font-bold uppercase">{employee.position} • ₱{audit.dailyRate}/day</p>
+            <div style={{fontSize:'8px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'1px',color:'#555',marginBottom:'2px'}}>Employee Details</div>
+            <div style={{fontSize:'16px',fontWeight:'900',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'2px'}}>{employee.name}</div>
+            <div style={{fontSize:'9px',fontWeight:'700',textTransform:'uppercase',color:'#333'}}>{employee.position} • &#x20B1;{Number(audit.dailyRate).toLocaleString()}/Day</div>
           </div>
-          <div className="text-right">
-            <p className="text-[8px] font-black uppercase">Cycle</p>
-            <p className="text-[10px] font-black leading-none">{payRecord.pay_period}</p>
+          <div style={{textAlign:'right'}}>
+            <div style={{fontSize:'8px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'1px',color:'#555',marginBottom:'2px'}}>Pay Period</div>
+            <div style={{fontSize:'13px',fontWeight:'900'}}>{payRecord.pay_period}</div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-6 text-[8px] flex-grow font-bold">
-          {/* EARNINGS SECTION - Print Cleaned */}
-          <div className="space-y-0.5 text-left">
-            <h4 className="border-b-2 border-black uppercase text-[8px] mb-1">Earnings Blueprint</h4>
+        {/* Main Body */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px',flex:'1 1 auto'}}>
+          
+          {/* Earnings */}
+          <div>
+            <div style={{fontSize:'10px',fontWeight:'900',textTransform:'uppercase',letterSpacing:'1px',borderBottom:'3px solid #000',paddingBottom:'3px',marginBottom:'6px'}}>Earnings Breakdown</div>
             
-            <div className="border-b border-black pb-1 mb-1">
-              <p className="text-[7px] font-black uppercase mb-1">Verified Attendance Weights</p>
-              <div className="flex justify-between"><span>Full Days ({audit.fullDays}):</span><span>{formatCurrency(audit.fullDays * audit.dailyRate)}</span></div>
-              <div className="flex justify-between"><span>Half Days ({audit.halfDays}):</span><span>{formatCurrency(audit.halfDays * (audit.dailyRate * 0.5))}</span></div>
-              {audit.holidayBreakdown.map((h, i) => (
-                <div key={i} className="flex justify-between">
-                  <span>{h.name} ({h.status}):</span>
-                  <span>{formatCurrency(h.amount)}</span>
+            {audit.fullDays > 0 && (
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:'3px',padding:'2px 0'}}>
+                <span style={{fontWeight:'700'}}>Full Days ({audit.fullDays}d):</span>
+                <span style={{fontWeight:'700'}}>&#x20B1;{(audit.fullDays * audit.dailyRate).toLocaleString('en-PH',{minimumFractionDigits:2})}</span>
+              </div>
+            )}
+            {audit.halfDays > 0 && (
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:'3px',padding:'2px 0'}}>
+                <span style={{fontWeight:'700'}}>Half Days ({audit.halfDays}d):</span>
+                <span style={{fontWeight:'700'}}>&#x20B1;{(audit.halfDays * audit.dailyRate * 0.5).toLocaleString('en-PH',{minimumFractionDigits:2})}</span>
+              </div>
+            )}
+            {audit.absentDates.length > 0 && (
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:'3px',padding:'2px 0',fontStyle:'italic',color:'#555'}}>
+                <div>
+                  <div>Absence ({audit.absentDates.length}d):</div>
+                  <div style={{fontSize:'8px',color:'#777'}}>{audit.absentDates.join(', ')}</div>
                 </div>
-              ))}
-              {audit.absentDates.length > 0 && (
-                <div className="flex justify-between italic mt-1 border-t border-black pt-0.5">
-                  <span>Absence ({audit.absentDates.join(',')}):</span>
-                  <span>-{formatCurrency(audit.absenceDeduction)}</span>
-                </div>
-              )}
+                <span>-&#x20B1;{audit.absenceDeduction.toLocaleString('en-PH',{minimumFractionDigits:2})}</span>
+              </div>
+            )}
+            
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:'4px',padding:'4px 0',borderTop:'1px solid #000',borderBottom:'1px solid #000',background:'#f5f5f5'}}>
+              <span style={{fontWeight:'900'}}>Salary Earned:</span>
+              <span style={{fontWeight:'900'}}>&#x20B1;{Number(payRecord.basic_salary).toLocaleString('en-PH',{minimumFractionDigits:2})}</span>
             </div>
 
-            <div className="flex justify-between font-black border-b border-black pb-0.5 pt-0.5"><span>Basic Earned:</span><span>{formatCurrency(payRecord.basic_salary)}</span></div>
-            {audit.otLogs.map((ot, i) => (
-              <div key={i} className="flex justify-between">
-                <span>OT ({format(parseISO(ot.date), 'MM/dd')}):</span>
-                <span>+{formatCurrency(ot.amount)}</span>
+            {audit.holidayBreakdown.map((h, i) => (
+              <div key={i} style={{display:'flex',justifyContent:'space-between',marginBottom:'3px',padding:'2px 0'}}>
+                <div>
+                  <div>{h.name} ({h.status === 'Worked' ? '2x Pay' : '1x Pay'}):</div>
+                  <div style={{fontSize:'8px',color:'#777'}}>{format(parseISO(h.date), 'MMM dd, yyyy')} • {h.type === 'regular' ? 'Regular Holiday' : 'Special Holiday'}</div>
+                </div>
+                <span>+&#x20B1;{h.amount.toLocaleString('en-PH',{minimumFractionDigits:2})}</span>
               </div>
             ))}
-            {payRecord.allowances > 0 && <div className="flex justify-between"><span>Allowances:</span><span>+{formatCurrency(payRecord.allowances)}</span></div>}
-            <div className="flex justify-between border-t-2 border-black pt-1 font-black text-[9px] mt-1 italic"><span>Gross Total</span><span>{formatCurrency(audit.totalEarnings)}</span></div>
+            {audit.otLogs.map((ot, i) => (
+              <div key={i} style={{display:'flex',justifyContent:'space-between',marginBottom:'3px',padding:'2px 0'}}>
+                <span>OT Pay ({format(parseISO(ot.date),'MM/dd')} {ot.minutes}m):</span>
+                <span>+&#x20B1;{ot.amount.toLocaleString('en-PH',{minimumFractionDigits:2})}</span>
+              </div>
+            ))}
+            {payRecord.allowances > 0 && (
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:'3px',padding:'2px 0'}}>
+                <span>Allowances:</span>
+                <span>+&#x20B1;{Number(payRecord.allowances).toLocaleString('en-PH',{minimumFractionDigits:2})}</span>
+              </div>
+            )}
+
+            <div style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderTop:'3px solid #000',marginTop:'4px'}}>
+              <span style={{fontSize:'11px',fontWeight:'900',textTransform:'uppercase'}}>Gross Pay</span>
+              <span style={{fontSize:'11px',fontWeight:'900'}}>&#x20B1;{audit.totalEarnings.toLocaleString('en-PH',{minimumFractionDigits:2})}</span>
+            </div>
           </div>
 
-          {/* DEDUCTIONS SECTION - Print Cleaned */}
-          <div className="space-y-0.5 text-left">
-            <h4 className="border-b-2 border-black uppercase text-[8px] mb-1">Deductions Audit</h4>
+          {/* Deductions */}
+          <div>
+            <div style={{fontSize:'10px',fontWeight:'900',textTransform:'uppercase',letterSpacing:'1px',borderBottom:'3px solid #000',paddingBottom:'3px',marginBottom:'6px'}}>Deductions</div>
+            
             {audit.lateLogs.map((item, i) => (
-              <div key={i} className="flex justify-between">
-                <span>Late ({format(parseISO(item.date), 'MM/dd')}):</span>
-                <span>-{formatCurrency(item.amount)}</span>
+              <div key={i} style={{display:'flex',justifyContent:'space-between',marginBottom:'3px',padding:'2px 0'}}>
+                <span>Late {format(parseISO(item.date),'MM/dd')} ({item.minutes}m):</span>
+                <span>-&#x20B1;{item.amount.toLocaleString('en-PH',{minimumFractionDigits:2})}</span>
               </div>
             ))}
             {audit.utLogs.map((item, i) => (
-              <div key={i} className="flex justify-between">
-                <span>UT ({format(parseISO(item.date), 'MM/dd')}):</span>
-                <span>-{formatCurrency(item.amount)}</span>
+              <div key={i} style={{display:'flex',justifyContent:'space-between',marginBottom:'3px',padding:'2px 0'}}>
+                <span>UT {format(parseISO(item.date),'MM/dd')} ({item.minutes}m):</span>
+                <span>-&#x20B1;{item.amount.toLocaleString('en-PH',{minimumFractionDigits:2})}</span>
               </div>
             ))}
-            {audit.statutory > 0 && <div className="flex justify-between"><span>Statutory Deductions:</span><span>-{formatCurrency(audit.statutory)}</span></div>}
-            
-            {/* Itemized Deductions Print */}
+            {payRecord.sss_contribution > 0 && <div style={{display:'flex',justifyContent:'space-between',marginBottom:'3px',padding:'2px 0'}}><span>SSS:</span><span>-&#x20B1;{Number(payRecord.sss_contribution).toLocaleString('en-PH',{minimumFractionDigits:2})}</span></div>}
+            {payRecord.philhealth_contribution > 0 && <div style={{display:'flex',justifyContent:'space-between',marginBottom:'3px',padding:'2px 0'}}><span>PhilHealth:</span><span>-&#x20B1;{Number(payRecord.philhealth_contribution).toLocaleString('en-PH',{minimumFractionDigits:2})}</span></div>}
+            {payRecord.pagibig_contribution > 0 && <div style={{display:'flex',justifyContent:'space-between',marginBottom:'3px',padding:'2px 0'}}><span>Pag-IBIG:</span><span>-&#x20B1;{Number(payRecord.pagibig_contribution).toLocaleString('en-PH',{minimumFractionDigits:2})}</span></div>}
             {payRecord.applied_deductions?.map((d, i) => (
-              <div key={i} className="flex justify-between italic">
-                <span>{d.category} ({format(parseISO(d.date), 'MM/dd')}):</span>
-                <span>-{formatCurrency(d.amount)}</span>
+              <div key={i} style={{display:'flex',justifyContent:'space-between',marginBottom:'3px',padding:'2px 0',fontStyle:'italic'}}>
+                <span>{d.category} ({format(parseISO(d.date),'MM/dd')}):</span>
+                <span>-&#x20B1;{Number(d.amount).toLocaleString('en-PH',{minimumFractionDigits:2})}</span>
               </div>
             ))}
-            
-            {payRecord.other_deductions > 0 && <div className="flex justify-between"><span>Misc Deductions:</span><span>-{formatCurrency(payRecord.other_deductions)}</span></div>}
-            <div className="flex justify-between border-t-2 border-black font-black text-[9px] pt-1 mt-auto italic"><span>Total Deductions</span><span>{formatCurrency(audit.totalDeductions)}</span></div>
+            {payRecord.other_deductions > 0 && <div style={{display:'flex',justifyContent:'space-between',marginBottom:'3px',padding:'2px 0'}}><span>Other:</span><span>-&#x20B1;{Number(payRecord.other_deductions).toLocaleString('en-PH',{minimumFractionDigits:2})}</span></div>}
+
+            <div style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderTop:'3px solid #000',marginTop:'4px'}}>
+              <span style={{fontSize:'10px',fontWeight:'900',textTransform:'uppercase'}}>Total Ded.</span>
+              <span style={{fontSize:'10px',fontWeight:'900'}}>&#x20B1;{audit.totalDeductions.toLocaleString('en-PH',{minimumFractionDigits:2})}</span>
+            </div>
           </div>
         </div>
 
-        <div className="mt-2 pt-2 border-t-2 border-black">
-          {/* Net Settlement Analysis - B&W High Contrast */}
-          <div className="border-2 border-black p-2 flex justify-between items-center mb-2">
-            <div className="text-left">
-              <p className="text-[7px] font-black uppercase tracking-widest">Net Settlement Analysis</p>
-              <p className="text-[6px] uppercase">{formatCurrency(audit.totalEarnings)} Gross — {formatCurrency(audit.totalDeductions)} deductions</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[7px] font-black uppercase tracking-widest">Net Take Home</p>
-              <p className="text-lg font-black leading-none">{formatCurrency(audit.netPay)}</p>
-            </div>
-          </div>
-          
-          <div className="text-[7px] font-bold text-center italic mb-4">
-            "I agree & acknowledge received in full the salary amount stated above"
-          </div>
-
-          <div className="grid grid-cols-2 gap-12 mt-4">
-            <div className="border-t-2 border-black pt-1 text-center text-[7px] font-black uppercase">Employee Signature</div>
-            <div className="border-t-2 border-black pt-1 text-center text-[7px] font-black uppercase">Authorized Auditor</div>
-          </div>
+        {/* Net Take Home */}
+        <div style={{border:'2px solid #000',padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'8px'}}>
+          <span style={{fontSize:'12px',fontWeight:'900',textTransform:'uppercase',letterSpacing:'1px'}}>Net Take Home:</span>
+          <span style={{fontSize:'20px',fontWeight:'900',letterSpacing:'1px'}}>&#x20B1;{audit.netPay.toLocaleString('en-PH',{minimumFractionDigits:2})}</span>
         </div>
+
+        {/* Acknowledgement */}
+        <div style={{textAlign:'center',fontSize:'7px',fontWeight:'700',fontStyle:'italic',marginTop:'6px',marginBottom:'4px'}}>
+          "I AGREE & ACKNOWLEDGE RECEIVED IN FULL THE SALARY AMOUNT STATED ABOVE."
+        </div>
+
+        {/* Signatures */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'20px',marginTop:'4px'}}>
+          <div style={{borderTop:'2px solid #000',paddingTop:'3px',textAlign:'center',fontSize:'8px',fontWeight:'900',textTransform:'uppercase',letterSpacing:'1px'}}>Employee Signature</div>
+          <div style={{borderTop:'2px solid #000',paddingTop:'3px',textAlign:'center',fontSize:'8px',fontWeight:'900',textTransform:'uppercase',letterSpacing:'1px'}}>Authorized By</div>
+        </div>
+
+        {/* Dashed border bottom */}
+        <div style={{borderTop:'2px dashed #000',marginTop:'6px',paddingTop:'3px',textAlign:'center',fontSize:'7px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'2px',color:'#888'}}>{copyLabel}</div>
       </div>
     );
   };
 
-  if (loading || !audit) return <div className="p-20 text-center font-black uppercase tracking-widest animate-pulse">Syncing Records...</div>;
 
   return (
     <div className="max-w-7xl mx-auto pb-12 text-left">
@@ -330,16 +392,13 @@ const PayslipDetail = () => {
                     </div>
                     {audit.holidayBreakdown.map((h, i) => (
                       <div key={i} className="flex justify-between text-[11px] font-black text-blue-600">
-                        <span className="flex items-center"><SafeIcon icon={FiGift} className="mr-2 text-blue-500" /> {h.name} ({h.status})</span>
+                        <span className="flex items-center"><SafeIcon icon={FiGift} className="mr-2 text-blue-500" /> {h.name} ({h.type === "regular" ? "Regular" : "Special"} • {h.status === "Worked" ? "Worked × 2x" : "Day Off × 1x"})</span>
                         <span>{formatCurrency(h.amount)}</span>
                       </div>
                     ))}
                   </div>
 
-                  <div className="flex justify-between pt-4 border-t border-dashed border-gray-200">
-                    <span className="text-[10px] font-black uppercase text-gray-800 tracking-tight">Basic Earned Salary</span>
-                    <span className="font-black text-2xl text-gray-900">{formatCurrency(payRecord.basic_salary)}</span>
-                  </div>
+
                 </div>
 
                 {audit.otLogs.length > 0 && (
@@ -388,10 +447,22 @@ const PayslipDetail = () => {
                 )}
 
                 <div className="space-y-3 pt-2 text-left">
-                  {audit.statutory > 0 && (
+                  {payRecord.sss_contribution > 0 && (
                     <div className="flex justify-between text-xs font-bold text-gray-600">
-                      <span>Consolidated Statutory</span>
-                      <span>-{formatCurrency(audit.statutory)}</span>
+                      <span>SSS Contribution</span>
+                      <span>-{formatCurrency(payRecord.sss_contribution)}</span>
+                    </div>
+                  )}
+                  {payRecord.philhealth_contribution > 0 && (
+                    <div className="flex justify-between text-xs font-bold text-gray-600">
+                      <span>PhilHealth Contribution</span>
+                      <span>-{formatCurrency(payRecord.philhealth_contribution)}</span>
+                    </div>
+                  )}
+                  {payRecord.pagibig_contribution > 0 && (
+                    <div className="flex justify-between text-xs font-bold text-gray-600">
+                      <span>Pag-IBIG Contribution</span>
+                      <span>-{formatCurrency(payRecord.pagibig_contribution)}</span>
                     </div>
                   )}
                   {payRecord.applied_deductions?.map((item, idx) => (
