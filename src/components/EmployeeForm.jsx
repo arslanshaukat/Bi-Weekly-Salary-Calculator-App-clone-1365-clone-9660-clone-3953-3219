@@ -26,6 +26,7 @@ const EmployeeForm = () => {
     payPeriodStart: existingRecord?.start_date || '',
     payPeriodEnd: existingRecord?.end_date || '',
     manualDays: existingRecord?.days_present?.toString() || '0',
+    halfDays: existingRecord?.half_days?.toString() || '0',
     manualRegHolidays: existingRecord?.reg_holiday_pay ? (existingRecord.reg_holiday_pay / (existingRecord.basic_salary / existingRecord.days_present)).toString() : '0',
     manualSpecHolidays: '0',
     lateMinutes: '0', // will be recalculated from attendance
@@ -75,6 +76,7 @@ const EmployeeForm = () => {
             setFormData(prev => ({
               ...prev,
               manualDays: totalDaysPresent.toString(),
+              halfDays: (stats.halfDaysPresent || 0).toString(),
               lateMinutes: (stats.totalLateMinutes || 0).toString(),
               overtimeMinutes: (stats.totalOvertimeMinutes || 0).toString(),
               undertimeMinutes: (stats.totalUndertimeMinutes || 0).toString(),
@@ -238,6 +240,10 @@ const EmployeeForm = () => {
                     <div className="text-left relative z-10">
                       <p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-2">Days Present</p>
                       <input type="number" step="0.1" value={formData.manualDays} onChange={(e) => setFormData(p => ({ ...p, manualDays: e.target.value }))} className="bg-transparent text-4xl font-black focus:outline-none w-32 border-b-4 border-blue-600" />
+                    </div>
+                    <div className="text-center relative z-10">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-yellow-400 mb-2">Half Days</p>
+                      <input type="number" step="0.5" value={formData.halfDays} onChange={(e) => setFormData(p => ({ ...p, halfDays: e.target.value }))} className="bg-transparent text-3xl font-black focus:outline-none w-20 text-center text-yellow-400 border-b-4 border-yellow-600/30" />
                     </div>
                     <div className="text-right relative z-10">
                       <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">OT Minutes</p>

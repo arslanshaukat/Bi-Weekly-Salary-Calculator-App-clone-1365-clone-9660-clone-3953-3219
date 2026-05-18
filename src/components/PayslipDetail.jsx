@@ -74,7 +74,6 @@ const PayslipDetail = () => {
     const absentDatesList = [];
 
     dateRange.forEach(day => {
-      if (isSunday(day)) return;
       const dateStr = format(day, 'yyyy-MM-dd');
       const holiday = holidayMap[dateStr];
       const log = attendanceMap[dateStr];
@@ -99,17 +98,23 @@ const PayslipDetail = () => {
         }
       } else {
         if (isWorking || (log && log.status === 'holiday')) {
-          if (log.check_in_time) {
-            const [h, m] = log.check_in_time.split(':').map(Number);
-            if ((h * 60 + m) >= 720) {
+          if (log.check_out_time) {
+            const [oh, om] = log.check_out_time.split(':').map(Number);
+            const outMins = oh * 60 + om;
+            // Half day: checkout between 12:00 (720) and 13:00 (780)
+            if (outMins >= 720 && outMins <= 780) {
               halfDays++;
               halfDayDates.add(dateStr);
             } else {
+              // Full day or undertime (undertime deduction handled separately)
               fullDays++;
             }
+          } else {
+            fullDays++;
           }
         } else {
-          absentDatesList.push(format(day, 'MMM dd'));
+          // Only mark as absent if not a holiday and not a Sunday
+          if (!holiday && !isSunday(day)) absentDatesList.push(format(day, 'MMM dd'));
         }
       }
     });
@@ -164,7 +169,8 @@ const PayslipDetail = () => {
     const calculatedEarnings = attendanceEarnings + otEarnings + allowanceEarnings;
     // Fall back to stored gross_pay if no attendance records available
     const storedGross = Number(payRecord.gross_pay || 0) + Number(payRecord.late_deduction || 0) + Number(payRecord.undertime_deduction || 0);
-    const totalEarnings = attendance.length > 0 ? calculatedEarnings : storedGross;
+    // Use stored gross when calculated is significantly less (missing attendance records)
+    const totalEarnings = (calculatedEarnings > storedGross * 0.5) ? calculatedEarnings : storedGross;
     const statutory = (payRecord.sss_contribution || 0) + (payRecord.philhealth_contribution || 0) + (payRecord.pagibig_contribution || 0);
     const debtTotal = (payRecord.applied_deductions || []).reduce((sum, d) => sum + d.amount, 0);
     const totalDeductions = statutory + debtTotal + (payRecord.other_deductions || 0) + (payRecord.late_deduction || 0) + (payRecord.undertime_deduction || 0);
@@ -180,7 +186,7 @@ const PayslipDetail = () => {
   }, [payRecord, employee, attendance, holidays]);
 
   const renderPrintCopy = (copyLabel) => {
-    if (!audit) return null;
+  if (!audit || !employee || !payRecord) return null;
     return (
       <div className="payslip-print-block" style={{fontFamily:'Arial,sans-serif',fontSize:'10px',color:'#000',display:'flex',flexDirection:'column'}}>
         
@@ -324,6 +330,7 @@ const PayslipDetail = () => {
   };
 
 
+  if (loading || !employee || !payRecord || !audit) return <div className="py-20 text-center text-gray-400 font-black uppercase tracking-widest text-sm">Loading payslip...</div>;
   return (
     <div className="max-w-7xl mx-auto pb-12 text-left">
       <div className="no-print space-y-8">
@@ -337,9 +344,9 @@ const PayslipDetail = () => {
         </div>
 
         <div className="bg-white rounded-[3rem] shadow-2xl overflow-hidden border border-gray-100">
-          <div className={`p-12 text-white flex justify-between items-center ${audit.netPay < 0 ? 'bg-red-900' : 'bg-gray-900'} relative`}>
+          <div className={`p-12 text-white flex justify-between items-center ${(audit?.netPay || 0) < 0 ? 'bg-red-900' : 'bg-gray-900'} relative`}>
             <div className="flex items-center space-x-8 relative z-10">
-              <div className={`p-6 rounded-[2rem] shadow-2xl ${audit.netPay < 0 ? 'bg-red-600' : 'bg-blue-600'}`}>
+              <div className={`p-6 rounded-[2rem] shadow-2xl ${(audit?.netPay || 0) < 0 ? 'bg-red-600' : 'bg-blue-600'}`}>
                 <SafeIcon icon={FiUser} className="text-5xl" />
               </div>
               <div>

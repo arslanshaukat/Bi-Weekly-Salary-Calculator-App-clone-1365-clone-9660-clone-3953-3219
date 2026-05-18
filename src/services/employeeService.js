@@ -250,8 +250,16 @@ export const employeeService = {
   },
 
   async getAttendance(employeeId, startDate, endDate) {
+    // Resolve Supabase UUID to PocketBase ID if needed
+    let pbEmpId = employeeId;
+    if (employeeId && employeeId.includes('-')) {
+      try {
+        const emp = await pb.collection('employees').getFirstListItem(`sb_id="${employeeId}"`);
+        pbEmpId = emp.id;
+      } catch(e) {}
+    }
     const records = await pb.collection('attendance').getFullList({
-      filter: `employee_id="${employeeId}" && date>="${startDate} 00:00:00.000Z" && date<="${endDate} 23:59:59.999Z"`,
+      filter: `employee_id="${pbEmpId}" && date>="${startDate} 00:00:00.000Z" && date<="${endDate} 23:59:59.999Z"`,
       sort: 'date'
     });
     return records.map(mapRecord);
@@ -260,12 +268,19 @@ export const employeeService = {
   async createAttendance(data) {
     const { employee_id, date } = data;
     const { id, collectionId, collectionName, ...cleanData } = data;
+    // Resolve employee_id to PB id if it's a UUID
+    if (cleanData.employee_id && cleanData.employee_id.includes('-')) {
+      try {
+        const emp = await pb.collection('employees').getFirstListItem(`sb_id="${cleanData.employee_id}"`);
+        cleanData.employee_id = emp.id;
+      } catch(e) {}
+    }
     const timestamped = { ...cleanData, modified_at: new Date().toISOString() };
     // Normalize date for filter - handle both YYYY-MM-DD and full timestamp formats
     const datePrefix = date.split(' ')[0].split('T')[0];
     try {
       const existing = await pb.collection('attendance').getFirstListItem(
-        `employee_id="${employee_id}" && date>="${datePrefix} 00:00:00.000Z" && date<="${datePrefix} 23:59:59.999Z"`
+        `employee_id="${cleanData.employee_id}" && date>="${datePrefix} 00:00:00.000Z" && date<="${datePrefix} 23:59:59.999Z"`
       );
       await pb.collection('attendance').update(existing.id, timestamped);
     } catch(e) {
@@ -304,7 +319,15 @@ export const employeeService = {
   },
 
   async getAttendanceSummary(employeeId, startDate, endDate) {
-    const attendance = await this.getAttendance(employeeId, startDate, endDate);
+    // Resolve to PB id if needed
+    let pbEmpId = employeeId;
+    if (employeeId.includes('-')) {
+      try {
+        const emp = await pb.collection('employees').getFirstListItem(`sb_id="${employeeId}"`);
+        pbEmpId = emp.id;
+      } catch(e) {}
+    }
+    const attendance = await this.getAttendance(pbEmpId, startDate, endDate);
     // Fetch holidays from PocketBase (not hardcoded list)
     const holidayRecords = await this.getHolidays();
     const pbHolidayMap = {};
@@ -316,6 +339,7 @@ export const employeeService = {
       regularHolidaysPresent: 0,
       regularHolidaysWorked: 0,
       regularHolidaysAbsent: 0,
+      halfDaysPresent: 0,
       specialHolidaysPresent: 0,
       totalLateMinutes: 0,
       totalUndertimeMinutes: 0,
@@ -343,12 +367,16 @@ export const employeeService = {
       if (log.check_out_time && isPresent) {
         const [h, m] = log.check_out_time.split(':').map(Number);
         checkoutMins = (h * 60) + m;
+        // Half day if checkout between 12:00 (720) and 13:00 (780)
+        if (checkoutMins >= 720 && checkoutMins <= 780) { dayWeight = 0.5; stats.halfDaysPresent++; }
       }
 
       // Check if the date is a Sunday
       const logDate = new Date(log.date);
       const isSunday = logDate.getDay() === 0;
-      const isEligibleFor13th = isPresent && checkinMins < LUNCH_START && (log.undertime_minutes || 0) < 240 && !isSunday;
+      // Half day = checkout between 12:00-13:00
+      const isHalfDay = checkoutMins >= 720 && checkoutMins <= 780;
+      const isEligibleFor13th = isPresent && checkinMins < LUNCH_START && (log.undertime_minutes || 0) < 240 && !isSunday && !isHalfDay;
 
       if (holiday) {
         if (holiday.type === 'regular') {

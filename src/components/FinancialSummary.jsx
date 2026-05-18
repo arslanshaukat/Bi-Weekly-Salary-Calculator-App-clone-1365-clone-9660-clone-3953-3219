@@ -38,8 +38,8 @@ const FinancialSummary = () => {
   }, []);
 
   const summaryData = useMemo(() => {
-    // 1. Initialize result object with ALL employees from the system
-    const grouped = employees.reduce((acc, emp) => {
+    // 1. Initialize result object with Active Full Time employees only
+    const grouped = employees.filter(emp => emp.employee_type === "Full Time" && emp.is_active === true).reduce((acc, emp) => {
       acc[emp.id] = {
         name: emp.name,
         idNum: emp.employee_id || 'N/A',
