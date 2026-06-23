@@ -24,6 +24,11 @@ const EmployeeDetail = () => {
   const [deductionHistory, setDeductionHistory] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [salaryHistory, setSalaryHistory] = useState([]);
+  const duplicatePeriods = useMemo(() => {
+    const counts = {};
+    payRecords.forEach(r => { counts[r.pay_period] = (counts[r.pay_period] || 0) + 1; });
+    return new Set(Object.keys(counts).filter(p => counts[p] > 1));
+  }, [payRecords]);
   const [activeTab, setActiveTab] = useState('payslips');
   const [loading, setLoading] = useState(true);
   const [showAddDeduction, setShowAddDeduction] = useState(false);
@@ -317,6 +322,9 @@ const EmployeeDetail = () => {
                             }
                             return null;
                           })()}
+                          {duplicatePeriods.has(record.pay_period) && (
+                            <span className="text-[8px] font-black uppercase bg-red-100 text-red-700 px-3 py-1 rounded-full tracking-widest animate-pulse">Duplicate</span>
+                          )}
                         </div>
                         <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Released: {format(parseISO(record.created_at), 'MMM dd, yyyy')}</span>
                       </div>
@@ -466,6 +474,9 @@ const EmployeeDetail = () => {
                               }
                               return null;
                             })()}
+                            {duplicatePeriods.has(rec.pay_period) && (
+                              <span className="text-[7px] font-black uppercase bg-red-100 text-red-700 px-2 py-1 rounded-full tracking-widest normal-case animate-pulse">Duplicate</span>
+                            )}
                           </div>
                         </td>
                         <td className="px-10 py-6 text-center font-mono text-sm text-gray-500">{rec.thirteenth_month_days || 0}</td>
