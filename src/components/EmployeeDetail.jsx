@@ -23,6 +23,7 @@ const EmployeeDetail = () => {
   const [payRecords, setPayRecords] = useState([]);
   const [deductionHistory, setDeductionHistory] = useState([]);
   const [attendance, setAttendance] = useState([]);
+  const [salaryHistory, setSalaryHistory] = useState([]);
   const [activeTab, setActiveTab] = useState('payslips');
   const [loading, setLoading] = useState(true);
   const [showAddDeduction, setShowAddDeduction] = useState(false);
@@ -48,6 +49,8 @@ const EmployeeDetail = () => {
         employeeService.getDeductionHistory(employeeId),
         employeeService.getAttendance(employeeId, start, end)
       ]);
+      const salHistory = await employeeService.getSalaryHistory(employeeId);
+      setSalaryHistory(salHistory);
       setEmployee(emp);
       // Sort by start_date descending (latest period on top)
       const sortedRecords = [...(records || [])].sort((a, b) => {
@@ -305,7 +308,16 @@ const EmployeeDetail = () => {
                     <div className="flex items-center space-x-6 text-left">
                       <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all"><SafeIcon icon={FiCalendar} className="text-xl" /></div>
                       <div>
-                        <p className="font-black text-gray-800 text-xl tracking-tight">{record.pay_period}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-black text-gray-800 text-xl tracking-tight">{record.pay_period}</p>
+                          {(() => {
+                            const [pStart, pEnd] = (record.pay_period || '').split(' to ');
+                            if (pStart && pEnd && employeeService.isRateChangePeriod(salaryHistory, pStart, pEnd)) {
+                              return <span className="text-[8px] font-black uppercase bg-green-100 text-green-700 px-3 py-1 rounded-full tracking-widest">Salary Increased</span>;
+                            }
+                            return null;
+                          })()}
+                        </div>
                         <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Released: {format(parseISO(record.created_at), 'MMM dd, yyyy')}</span>
                       </div>
                     </div>
@@ -444,7 +456,18 @@ const EmployeeDetail = () => {
                   <tbody className="divide-y divide-gray-50 font-black">
                     {payRecords.filter(rec => Number(rec.thirteenth_month || 0) > 0).map((rec, i) => (
                       <tr key={i} className="hover:bg-green-50/20 transition-colors">
-                        <td className="px-10 py-6 text-gray-800 text-sm tracking-tight font-mono uppercase">{rec.pay_period}</td>
+                        <td className="px-10 py-6 text-gray-800 text-sm tracking-tight font-mono uppercase">
+                          <div className="flex items-center gap-2">
+                            <span>{rec.pay_period}</span>
+                            {(() => {
+                              const [pStart, pEnd] = (rec.pay_period || '').split(' to ');
+                              if (pStart && pEnd && employeeService.isRateChangePeriod(salaryHistory, pStart, pEnd)) {
+                                return <span className="text-[7px] font-black uppercase bg-amber-100 text-amber-700 px-2 py-1 rounded-full tracking-widest normal-case">Rate Changed</span>;
+                              }
+                              return null;
+                            })()}
+                          </div>
+                        </td>
                         <td className="px-10 py-6 text-center font-mono text-sm text-gray-500">{rec.thirteenth_month_days || 0}</td>
                         <td className="px-10 py-6 text-right font-mono text-sm text-green-600">{formatCurrency(Number(rec.thirteenth_month || 0))}</td>
                       </tr>

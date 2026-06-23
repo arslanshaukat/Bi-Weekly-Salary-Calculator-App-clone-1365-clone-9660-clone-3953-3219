@@ -117,6 +117,12 @@ export const employeeService = {
       return records.map(mapRecord);
     } catch(e) { return []; }
   },
+  // Returns true if a rate change took effect within [startDate, endDate] inclusive.
+  // Used to badge "first payrun at new rate" and 13th-month rate-affected periods.
+  isRateChangePeriod(salaryHistory, startDate, endDate) {
+    if (!salaryHistory || salaryHistory.length === 0) return false;
+    return salaryHistory.some(h => h.effective_date >= startDate && h.effective_date <= endDate && h.notes && (h.notes.includes('rate changed') || h.notes.includes('rate increase')));
+  },
 
   async getEmployeeBasicInfo() {
     return this.deduplicate('basic-info', async () => {
