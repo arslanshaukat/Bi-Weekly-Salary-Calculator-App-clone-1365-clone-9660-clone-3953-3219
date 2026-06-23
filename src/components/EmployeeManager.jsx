@@ -40,6 +40,8 @@ export default function EmployeeManager() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [editingOriginalSalary, setEditingOriginalSalary] = useState(null);
+  const [editingSbId, setEditingSbId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
@@ -104,6 +106,8 @@ export default function EmployeeManager() {
       is_active: emp.is_active !== false
     });
     setEditingId(emp.id);
+    setEditingOriginalSalary(emp.daily_salary != null ? Number(emp.daily_salary) : null);
+    setEditingSbId(emp.id);
     setShowForm(true);
   }
 
@@ -116,6 +120,14 @@ export default function EmployeeManager() {
       const data = { ...form, daily_salary: Number(form.daily_salary) };
       if (editingId) {
         await employeeService.updateEmployee(editingId, data);
+        const newSalary = Number(form.daily_salary);
+        if (editingOriginalSalary !== null && newSalary !== editingOriginalSalary && editingSbId) {
+          const today = new Date().toISOString().split('T')[0];
+          await employeeService.logSalaryChange(
+            editingSbId, newSalary, today,
+            `${form.name} - rate changed from ${editingOriginalSalary} to ${newSalary}`
+          );
+        }
         toast.success('Employee updated');
       } else {
         await employeeService.createEmployee(data);

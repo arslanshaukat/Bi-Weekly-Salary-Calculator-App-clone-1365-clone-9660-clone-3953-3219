@@ -93,6 +93,30 @@ export const employeeService = {
       return records.map(mapRecord);
     });
   },
+  async logSalaryChange(employeeSbId, newDailySalary, effectiveDate, notes = '') {
+    try {
+      const record = await pb.collection('salary_history').create({
+        employee_id: employeeSbId,
+        daily_salary: newDailySalary,
+        effective_date: effectiveDate,
+        notes: notes,
+        created_by: 'manual_edit'
+      });
+      return mapRecord(record);
+    } catch(e) {
+      console.error('Failed to log salary change:', e);
+      return null;
+    }
+  },
+  async getSalaryHistory(employeeSbId) {
+    try {
+      const records = await pb.collection('salary_history').getFullList({
+        filter: `employee_id="${employeeSbId}"`,
+        sort: 'effective_date'
+      });
+      return records.map(mapRecord);
+    } catch(e) { return []; }
+  },
 
   async getEmployeeBasicInfo() {
     return this.deduplicate('basic-info', async () => {
