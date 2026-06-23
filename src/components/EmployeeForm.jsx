@@ -69,8 +69,11 @@ const EmployeeForm = () => {
               formData.payPeriodEnd
             );
             // Calculate 13th month based on daily salary and eligible days
+            // 13th month is a Full Time benefit only — Probationary/Contractual/Temporary do not accrue it
+            const isFullTime13th = selectedEmployee.employee_type === 'Full Time';
             const dailySal = Number(selectedEmployee.daily_salary || 0);
-            const thirteenthAmt = dailySal > 0 ? Math.round((dailySal * stats.thirteenthMonthDays / 12) * 100) / 100 : 0;
+            const eligible13thDays = isFullTime13th ? stats.thirteenthMonthDays : 0;
+            const thirteenthAmt = (isFullTime13th && dailySal > 0) ? Math.round((dailySal * stats.thirteenthMonthDays / 12) * 100) / 100 : 0;
             // Days present = ONLY regular working days (holidays paid separately via reg/spec holiday pay)
             const totalDaysPresent = (stats.regularDaysPresent || 0);
             setFormData(prev => ({
@@ -84,7 +87,7 @@ const EmployeeForm = () => {
                 ? (stats.regularHolidaysPresent || 0).toString()
                 : (stats.regularHolidaysWorked || 0).toString(),
               manualSpecHolidays: (selectedEmployee.employee_type === 'Full Time') ? (stats.specialHolidaysPresent || 0).toString() : '0',
-              thirteenthMonthDays: (stats.thirteenthMonthDays || 0).toString(),
+              thirteenthMonthDays: eligible13thDays.toString(),
               thirteenthMonth: thirteenthAmt.toString(),
             }));
           }
