@@ -350,7 +350,7 @@ export const employeeService = {
 
     attendance.forEach(log => {
       const holiday = getHolidayFromPB(log.date);
-      const isPresent = ['present', 'late', 'holiday', 'undertime'].includes(log.status);
+      const isPresent = ['present', 'late', 'holiday', 'undertime', 'half_day'].includes(log.status);
       const isHolidayOffRegular = log.status === 'holiday_off_regular';
       const isHolidayOffSpecial = log.status === 'holiday_off_special';
       const isHolidayOff = isHolidayOffRegular || isHolidayOffSpecial;

@@ -77,7 +77,7 @@ const PayslipDetail = () => {
       const dateStr = format(day, 'yyyy-MM-dd');
       const holiday = holidayMap[dateStr];
       const log = attendanceMap[dateStr];
-      const isWorking = log && ['present', 'late', 'undertime', 'holiday'].includes(log.status);
+      const isWorking = log && ['present', 'late', 'undertime', 'holiday', 'half_day'].includes(log.status);
 
       if (holiday) {
         let multiplier = 0;
@@ -98,7 +98,11 @@ const PayslipDetail = () => {
         }
       } else {
         if (isWorking || (log && log.status === 'holiday')) {
-          if (log.check_out_time) {
+          // half_day status always counts as half day
+          if (log.status === 'half_day') {
+            halfDays++;
+            halfDayDates.add(dateStr);
+          } else if (log.check_out_time) {
             const [oh, om] = log.check_out_time.split(':').map(Number);
             const outMins = oh * 60 + om;
             // Half day: checkout between 12:00 (720) and 13:00 (780)
@@ -106,7 +110,6 @@ const PayslipDetail = () => {
               halfDays++;
               halfDayDates.add(dateStr);
             } else {
-              // Full day or undertime (undertime deduction handled separately)
               fullDays++;
             }
           } else {
@@ -146,14 +149,14 @@ const PayslipDetail = () => {
       }] : [];
 
     const lateLogs = attendance
-      .filter(log => (log.late_minutes || 0) > 0 && !halfDayDates.has(log.date))
+      .filter(log => (log.late_minutes || 0) > 0 && !halfDayDates.has(log.date) && log.status !== 'half_day')
       .map(log => ({
         date: log.date,
         minutes: log.late_minutes,
         amount: Math.round(log.late_minutes * minuteRate * 100) / 100
       }));
 
-    const utLogs = attendance.filter(log => (log.undertime_minutes || 0) > 0).map(log => ({
+    const utLogs = attendance.filter(log => (log.undertime_minutes || 0) > 0 && log.status !== 'half_day').map(log => ({
       date: log.date,
       minutes: log.undertime_minutes,
       amount: Math.round(log.undertime_minutes * minuteRate * 100) / 100
@@ -173,14 +176,17 @@ const PayslipDetail = () => {
     const totalEarnings = (calculatedEarnings > storedGross * 0.5) ? calculatedEarnings : storedGross;
     const statutory = (payRecord.sss_contribution || 0) + (payRecord.philhealth_contribution || 0) + (payRecord.pagibig_contribution || 0);
     const debtTotal = (payRecord.applied_deductions || []).reduce((sum, d) => sum + d.amount, 0);
-    const totalDeductions = statutory + debtTotal + (payRecord.other_deductions || 0) + (payRecord.late_deduction || 0) + (payRecord.undertime_deduction || 0);
+    // Recalculate late/UT deductions from attendance (exclude half_day records)
+    const recalcLateDeduction = lateLogs.reduce((s, l) => s + l.amount, 0);
+    const recalcUtDeduction = utLogs.reduce((s, l) => s + l.amount, 0);
+    const totalDeductions = statutory + debtTotal + (payRecord.other_deductions || 0) + recalcLateDeduction + recalcUtDeduction;
 
     return {
       expectedDays, expectedSalary, absentDates: absentDatesList, 
       absenceDeduction: absentDatesList.length * dailyRate,
       fullDays, halfDays, holidayBreakdown,
       otLogs, lateLogs, utLogs,
-      totalEarnings, totalDeductions, netPay: totalEarnings - totalDeductions,
+      totalEarnings, totalDeductions, netPay: Number(payRecord.net_pay || 0),
       statutory, debtTotal, dailyRate
     };
   }, [payRecord, employee, attendance, holidays]);

@@ -216,8 +216,14 @@ const AttendanceTracker = () => {
     if (checkoutMins > SHIFT_END) totalOTMins += (checkoutMins - SHIFT_END);
 
     let finalStatus = editForm.status;
-    if (['present', 'late', 'undertime'].includes(finalStatus)) {
-      if (lateMinutes > 0) finalStatus = 'late';
+    // If manually set to half_day, respect that choice
+    if (finalStatus === 'half_day') {
+      // keep as half_day
+    } else if (['present', 'late', 'undertime'].includes(finalStatus)) {
+      const checkoutMins = parseTime(editForm.check_out_time);
+      const isHalfDay = checkoutMins >= 720 && checkoutMins <= 780;
+      if (isHalfDay) finalStatus = 'half_day';
+      else if (lateMinutes > 0) finalStatus = 'late';
       else if (undertimeMinutes > 0) finalStatus = 'undertime';
       else finalStatus = 'present';
     }
@@ -435,7 +441,7 @@ const AttendanceTracker = () => {
                 <div>
                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Daily Status</label>
                    <div className="grid grid-cols-2 gap-3">
-                      {['present', 'absent', 'late', 'undertime', 'holiday', 'holiday_off_regular', 'holiday_off_special'].map(s => (
+                      {['present', 'absent', 'late', 'undertime', 'half_day', 'holiday', 'holiday_off_regular', 'holiday_off_special'].map(s => (
                         <button 
                           key={s} 
                           type="button" 
@@ -444,7 +450,7 @@ const AttendanceTracker = () => {
                             editForm.status === s ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-gray-50 border-gray-100 text-gray-400 hover:border-blue-200'
                           }`}
                         >
-                          {s === 'holiday_off_regular' ? 'Holiday Off (Regular)' : s === 'holiday_off_special' ? 'Holiday Off (Special)' : s === 'holiday' ? 'Holiday (Worked)' : s}
+                          {s === 'holiday_off_regular' ? 'Holiday Off (Regular)' : s === 'holiday_off_special' ? 'Holiday Off (Special)' : s === 'holiday' ? 'Holiday (Worked)' : s === 'half_day' ? 'Half Day' : s}
                         </button>
                       ))}
                    </div>
