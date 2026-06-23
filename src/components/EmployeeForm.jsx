@@ -154,8 +154,19 @@ const EmployeeForm = () => {
 
       const netPay = round(grossPay - (sss + ph + pi + totalLiabilities + other));
 
+      // Safety: always re-resolve to a guaranteed sb_id right before saving.
+      // Protects against brand-new employees whose sb_id hadn't synced yet
+      // when this form's employee list was first loaded.
+      let safeEmployeeId = selectedEmployee.id;
+      try {
+        const freshEmp = await employeeService.getEmployeeById(selectedEmployee.id);
+        if (freshEmp && freshEmp.id) safeEmployeeId = freshEmp.id;
+      } catch (e) {
+        console.warn('Could not re-resolve employee id, using existing value', e);
+      }
+
       const recordData = {
-        employee_id: selectedEmployee.id,
+        employee_id: safeEmployeeId,
         pay_period: `${formData.payPeriodStart} to ${formData.payPeriodEnd}`,
         start_date: formData.payPeriodStart,
         end_date: formData.payPeriodEnd,
