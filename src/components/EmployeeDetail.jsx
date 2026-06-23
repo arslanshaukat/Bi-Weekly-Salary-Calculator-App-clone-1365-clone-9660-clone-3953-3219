@@ -310,6 +310,15 @@ const EmployeeDetail = () => {
                       </div>
                     </div>
                     <div className="flex items-center space-x-8">
+                      <div className="text-right hidden md:block">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Daily Rate</p>
+                        <p className="text-sm font-black text-gray-600">
+                          {record.days_present > 0
+                            ? formatCurrency(Math.round((record.basic_salary / record.days_present) * 100) / 100)
+                            : '—'}
+                          /day
+                        </p>
+                      </div>
                       <div className="text-right hidden sm:block">
                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Net Payout</p>
                         <p className={`text-xl font-black ${record.net_pay < 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(record.net_pay)}</p>

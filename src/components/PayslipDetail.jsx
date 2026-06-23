@@ -51,7 +51,13 @@ const PayslipDetail = () => {
 
   const audit = useMemo(() => {
     if (!payRecord || !employee) return null;
-    const dailyRate = Number(employee.daily_salary || 0);
+    // Use the rate actually paid for THIS period (locked in at processing time),
+    // not the employee's current rate, so historical payslips stay accurate after raises.
+    const periodBasic = Number(payRecord.basic_salary || 0);
+    const periodDays = Number(payRecord.days_present || 0);
+    const dailyRate = periodDays > 0
+      ? Math.round((periodBasic / periodDays) * 100) / 100
+      : Number(employee.daily_salary || 0);
     const minuteRate = (dailyRate / 8) / 60;
     const isFullTime = employee.employee_type === 'Full Time';
 
