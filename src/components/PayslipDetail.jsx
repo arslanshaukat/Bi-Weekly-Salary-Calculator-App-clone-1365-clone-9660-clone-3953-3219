@@ -89,13 +89,17 @@ const PayslipDetail = () => {
         let multiplier = 0;
         if (isFullTime) {
           multiplier = holiday.type === 'regular' ? (isWorking ? 2.0 : 1.0) : (isWorking ? 1.3 : 0);
+          // premiumOnly = the EXTRA portion only (base daily pay is already in Full Days Worked)
+          const premiumOnly = holiday.type === 'regular'
+            ? (isWorking ? 1.0 : 1.0)   // worked: +100% extra; day off: 100% (no base covered)
+            : (isWorking ? 0.3 : 0);      // worked: +30% extra; day off: no pay
           if (multiplier > 0) {
             holidayBreakdown.push({
               date: dateStr,
               name: holiday.name,
               type: holiday.type,
               status: isWorking ? 'Worked' : 'Off',
-              amount: dailyRate * multiplier
+              amount: dailyRate * premiumOnly
             });
           }
           // Also count worked holiday days in fullDays so attendance total is correct
