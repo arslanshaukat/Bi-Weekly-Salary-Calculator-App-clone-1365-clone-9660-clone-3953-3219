@@ -98,6 +98,8 @@ const PayslipDetail = () => {
               amount: dailyRate * multiplier
             });
           }
+          // Also count worked holiday days in fullDays so attendance total is correct
+          if (isWorking) fullDays += 1;
         } else {
           // Non-full-time: only paid if worked, counted as regular day (no holiday premium)
           if (isWorking) fullDays += 1;
@@ -259,8 +261,8 @@ const PayslipDetail = () => {
             {audit.holidayBreakdown.map((h, i) => (
               <div key={i} style={{display:'flex',justifyContent:'space-between',marginBottom:'3px',padding:'2px 0'}}>
                 <div>
-                  <div>{h.name} ({h.status === 'Worked' ? '2x Pay' : '1x Pay'}):</div>
-                  <div style={{fontSize:'8px',color:'#777'}}>{format(parseISO(h.date), 'MMM dd, yyyy')} • {h.type === 'regular' ? 'Regular Holiday' : 'Special Holiday'}</div>
+                  <div>{h.name} ({h.type === 'regular' ? 'Regular Holiday' : 'Special Holiday'} • {h.type === 'regular' ? (h.status === 'Worked' ? '+100%' : '+100% Day Off') : '+30%'}):</div>
+                  <div style={{fontSize:'8px',color:'#777'}}>{format(parseISO(h.date), 'MMM dd, yyyy')}</div>
                 </div>
                 <span>+&#x20B1;{h.amount.toLocaleString('en-PH',{minimumFractionDigits:2})}</span>
               </div>
@@ -411,7 +413,7 @@ const PayslipDetail = () => {
                     </div>
                     {audit.holidayBreakdown.map((h, i) => (
                       <div key={i} className="flex justify-between text-[11px] font-black text-blue-600">
-                        <span className="flex items-center"><SafeIcon icon={FiGift} className="mr-2 text-blue-500" /> {h.name} ({h.type === "regular" ? "Regular" : "Special"} • {h.status === "Worked" ? "Worked × 2x" : "Day Off × 1x"})</span>
+                        <span className="flex items-center"><SafeIcon icon={FiGift} className="mr-2 text-blue-500" /> {h.name} ({h.type === "regular" ? "Regular Holiday" : "Special Holiday"} • {h.type === "regular" ? (h.status === "Worked" ? "+100%" : "+100% Day Off") : "+30%"})</span>
                         <span>{formatCurrency(h.amount)}</span>
                       </div>
                     ))}

@@ -499,7 +499,12 @@ export const employeeService = {
             stats.regularHolidaysAbsent++;
           }
         } else {
-          if (isPresent) stats.specialHolidaysPresent += dayWeight;
+          if (isPresent) {
+            // Worked on special holiday - always gets basic daily pay (regularDaysPresent)
+            // Full Time employees additionally get special holiday premium (specialHolidaysPresent)
+            stats.regularDaysPresent += dayWeight;
+            stats.specialHolidaysPresent += dayWeight;
+          }
           // holiday_off_special = no pay, not counted
         }
       } else if (isPresent) {

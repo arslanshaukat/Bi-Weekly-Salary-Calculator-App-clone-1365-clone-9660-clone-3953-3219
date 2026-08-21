@@ -58,9 +58,8 @@ const EmployeeForm = () => {
     loadEmployees();
   }, []);
 
-  useEffect(() => {
-    const syncAttendanceData = async () => {
-      if (selectedEmployee && formData.payPeriodStart && formData.payPeriodEnd) {
+  const syncAttendanceData = async () => {
+    if (selectedEmployee && formData.payPeriodStart && formData.payPeriodEnd) {
         try {
           {
             const stats = await employeeService.getAttendanceSummary(
@@ -106,8 +105,9 @@ const EmployeeForm = () => {
         } catch (e) {
           console.error('Attendance sync error:', e);
         }
-      }
-    };
+    }
+  };
+  useEffect(() => {
     syncAttendanceData();
   }, [formData.payPeriodStart, formData.payPeriodEnd, selectedEmployee]);
 
@@ -248,6 +248,12 @@ const EmployeeForm = () => {
                   <div className="col-span-full grid grid-cols-2 gap-4">
                     <input type="date" value={formData.payPeriodStart} onChange={(e) => setFormData(p => ({ ...p, payPeriodStart: e.target.value }))} className="w-full px-5 py-4 border-2 border-gray-100 rounded-2xl font-bold bg-gray-50" required />
                     <input type="date" value={formData.payPeriodEnd} onChange={(e) => setFormData(p => ({ ...p, payPeriodEnd: e.target.value }))} className="w-full px-5 py-4 border-2 border-gray-100 rounded-2xl font-bold bg-gray-50" required />
+                  </div>
+                  <div className="col-span-full flex justify-end">
+                    <button type="button" onClick={syncAttendanceData} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 px-4 py-2 rounded-xl hover:bg-blue-100 transition-all border border-blue-100">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                      Refresh Attendance
+                    </button>
                   </div>
 
                   <div className="bg-gray-900 p-8 rounded-[2.5rem] text-white flex items-center justify-between col-span-full shadow-2xl relative overflow-hidden">
