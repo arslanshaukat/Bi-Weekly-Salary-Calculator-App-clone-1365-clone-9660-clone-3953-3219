@@ -22,6 +22,7 @@ const CalculationResults = lazy(() => import('./components/CalculationResults'))
 const EmployeeList = lazy(() => import('./components/EmployeeList'));
 const AttendanceTracker = lazy(() => import('./components/AttendanceTracker'));
 const EmployeeDetail = lazy(() => import('./components/EmployeeDetail'));
+const PayrollSummary = lazy(() => import('./components/PayrollSummary'));
 const PayslipDetail = lazy(() => import('./components/PayslipDetail'));
 const UserManagement = lazy(() => import('./components/UserManagement'));
 const UserProfile = lazy(() => import('./components/UserProfile'));
@@ -77,6 +78,7 @@ function AppInner() {
             <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
             <Route path="/summary" element={<ProtectedRoute requirePermission="manage_payroll"><FinancialSummary /></ProtectedRoute>} />
             <Route path="/holidays" element={<ProtectedRoute requirePermission="manage_payroll"><HolidaySettings /></ProtectedRoute>} />
+            <Route path="/payroll-summary" element={<ProtectedRoute requirePermission="manage_payroll"><PayrollSummary /></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute requireAdmin={true}><UserManagement /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

@@ -6,7 +6,7 @@ import { systemService } from '../services/systemService';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const { FiCalculator, FiUsers, FiCalendar, FiUser, FiLogOut, FiSettings, FiArchive, FiMenu, FiX, FiPieChart, FiGift } = FiIcons;
+const { FiCalculator, FiUsers, FiCalendar, FiUser, FiLogOut, FiSettings, FiArchive, FiMenu, FiX, FiPieChart, FiGift, FiGrid } = FiIcons;
 
 const Header = () => {
   const location = useLocation();
@@ -63,6 +63,7 @@ const Header = () => {
     { path: '/results', label: 'Archives', icon: FiArchive, permission: 'manage_payroll' },
     { path: '/summary', label: 'Summary', icon: FiPieChart, permission: 'manage_payroll' },
     { path: '/holidays', label: 'Holidays', icon: FiGift, permission: 'manage_payroll' },
+    { path: '/payroll-summary', label: 'Payroll Sheet', icon: FiGrid, permission: 'manage_payroll' },
   ].filter(link => {
     if (user?.email === 'gtsubic@gmail.com') {
       return link.path === '/attendance';

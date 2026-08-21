@@ -80,6 +80,56 @@
     size: A4;
     margin: 0;
   }
+
+}
+
+@media print {
+  .payroll-summary-print {
+    width: 100% !important;
+    overflow: visible !important;
+  }
+  .payroll-summary-print {
+    margin: 0 !important;
+  }
+  .payroll-summary-print table {
+    font-size: 9px !important;
+    table-layout: auto;
+    transform: scale(0.42);
+    transform-origin: top left;
+    width: 238% !important;
+  }
+  .payroll-summary-print {
+    height: auto !important;
+    min-height: 0 !important;
+    page-break-inside: avoid;
+    page-break-after: avoid;
+  }
+  .payroll-summary-print + * {
+    display: none !important;
+  }
+  html, body {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  .payroll-summary-print th,
+  .payroll-summary-print td {
+    padding: 2px 3px !important;
+    white-space: nowrap;
+  }
+  .payroll-summary-print .sticky {
+    position: static !important;
+  }
+  .payroll-summary-print .overflow-x-auto {
+    overflow: visible !important;
+  }
+  .payroll-summary-print {
+    border-radius: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  body {
+    -webkit-print-color-adjust: exact;
+  }
 }
 
 /* Custom Scrollbar */

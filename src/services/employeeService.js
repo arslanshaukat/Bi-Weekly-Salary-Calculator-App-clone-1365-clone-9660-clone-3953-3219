@@ -71,7 +71,17 @@ export const employeeService = {
   },
 
   async createEmployee(employeeData) {
-    const record = await pb.collection('employees').create(employeeData);
+    // Auto-assign a UUID as sb_id if not provided, so new employees
+    // always have a stable sb_id from day one — prevents attendance/pay_record
+    // mismatches caused by the PB id vs sb_id format issue.
+    const dataWithSbId = { ...employeeData };
+    if (!dataWithSbId.sb_id) {
+      dataWithSbId.sb_id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+    }
+    const record = await pb.collection('employees').create(dataWithSbId);
     return mapRecord(record);
   },
 
@@ -321,6 +331,14 @@ export const employeeService = {
       }
       await pb.collection('attendance').create(timestamped);
     }
+    // Auto-recalculate any pay_record covering this attendance date
+    // Uses original employee_id (sb_id format) for pay_record lookup,
+    // and resolved PB id for attendance summary
+    this.recalculatePayRecordFromAttendance(
+      cleanData.employee_id,
+      employee_id,
+      datePrefix
+    ).catch(e => console.warn('Pay record recalc skipped:', e));
   },
 
   async bulkCreateAttendance(records) {
@@ -348,6 +366,65 @@ export const employeeService = {
     }
   },
 
+  async recalculatePayRecordFromAttendance(employeePbId, employeeSbId, attendanceDate) {
+    try {
+      const dateStr = attendanceDate.split(' ')[0].split('T')[0];
+      // Find pay_record whose period contains this date
+      const allRecords = await pb.collection('pay_records').getFullList({
+        filter: `employee_id="${employeeSbId || employeePbId}"`,
+        sort: '-start_date'
+      });
+      const payRecord = allRecords.find(r => {
+        const s = (r.start_date || '').split(' ')[0].split('T')[0];
+        const e = (r.end_date || '').split(' ')[0].split('T')[0];
+        return s && e && dateStr >= s && dateStr <= e;
+      });
+      if (!payRecord) return; // No pay_record covers this date yet
+      // Get employee details for rate and type
+      const emp = await pb.collection('employees').getOne(employeePbId);
+      const dailySalary = emp.daily_salary || 0;
+      const isFullTime = emp.employee_type === 'Full Time';
+      const startDate = (payRecord.start_date || '').split(' ')[0].split('T')[0];
+      const endDate = (payRecord.end_date || '').split(' ')[0].split('T')[0];
+      // Recalculate from attendance
+      const stats = await this.getAttendanceSummary(employeeSbId || employeePbId, startDate, endDate);
+      const daysPresent = stats.regularDaysPresent || 0;
+      const basicSalary = Math.round(dailySalary * daysPresent * 100) / 100;
+      const minuteRate = (dailySalary / 8) / 60;
+      const lateDeduction = Math.round((stats.totalLateMinutes || 0) * minuteRate * 100) / 100;
+      const otPay = Math.round((stats.totalOvertimeMinutes || 0) * minuteRate * 100) / 100;
+      const regHolidayPay = isFullTime ? Math.round((stats.regularHolidaysPresent || 0) * dailySalary * 100) / 100 : 0;
+      const specHolidayPay = isFullTime ? Math.round((stats.specialHolidaysPresent || 0) * dailySalary * 0.3 * 100) / 100 : 0;
+      const eligible13thDays = isFullTime ? (stats.thirteenthMonthDays || 0) : 0;
+      const thirteenthMonth = isFullTime ? Math.round((dailySalary * eligible13thDays / 12) * 100) / 100 : 0;
+      // Preserve manually-entered fields, only update attendance-derived ones
+      const cashAdvance = payRecord.cash_advance || 0;
+      const appliedDeductions = payRecord.applied_deductions || [];
+      const totalLiabilities = appliedDeductions.reduce((s, d) => s + (d.amount || 0), 0);
+      const sss = payRecord.sss_contribution || 0;
+      const philhealth = payRecord.philhealth_contribution || 0;
+      const pagibig = payRecord.pagibig_contribution || 0;
+      const allowances = payRecord.allowances || 0;
+      const otherDeductions = payRecord.other_deductions || 0;
+      const grossPay = basicSalary + otPay + regHolidayPay + specHolidayPay + allowances;
+      const netPay = Math.round((grossPay - lateDeduction - cashAdvance - totalLiabilities - sss - philhealth - pagibig - otherDeductions) * 100) / 100;
+      await pb.collection('pay_records').update(payRecord.id, {
+        days_present: daysPresent,
+        basic_salary: basicSalary,
+        gross_pay: grossPay,
+        net_pay: netPay,
+        late_deduction: lateDeduction,
+        overtime_pay: otPay,
+        reg_holiday_pay: regHolidayPay,
+        spec_holiday_pay: specHolidayPay,
+        thirteenth_month_days: eligible13thDays,
+        thirteenth_month: thirteenthMonth,
+        half_days: stats.halfDaysPresent || 0,
+      });
+    } catch(e) {
+      console.error('Auto-recalculate pay_record failed:', e);
+    }
+  },
   async getAttendanceSummary(employeeId, startDate, endDate) {
     // Resolve to PB id if needed
     let pbEmpId = employeeId;
