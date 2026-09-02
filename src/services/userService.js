@@ -46,7 +46,51 @@ export const userService = {
 
   async updateUserPermissions(userId, permissions) {
     const existing = await pb.collection('profiles').getFirstListItem(`sb_id="${userId}"`);
-    const record = await pb.collection('profiles').update(existing.id, { permissions });
+    const permStr = typeof permissions === 'object' ? JSON.stringify(permissions) : (permissions || '{}');
+    const record = await pb.collection('profiles').update(existing.id, { permissions: permStr });
     return mapRecord(record);
+  },
+  async createUser(email, password, fullName, role, permissions) {
+    // Uses signUp — works with anon key; Supabase will send confirmation email
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: fullName } }
+    });
+    if (error) throw error;
+    const userId = data.user?.id;
+    if (userId) {
+      try {
+        await pb.collection('profiles').create({
+          sb_id: userId,
+          email,
+          full_name: fullName,
+          role: role || 'user',
+          permissions: typeof permissions === 'object' ? JSON.stringify(permissions) : (permissions || '{}'),
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      } catch(e) {
+        console.error('Profile creation failed:', e);
+      }
+    }
+    return data.user;
+  },
+  async resetUserPassword(email) {
+    // Sends a password reset email — works with anon key
+    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/profile'
+    });
+    if (error) throw error;
+    return data;
+  },
+  async deactivateUser(userId) {
+    // Soft-delete: mark profile as inactive (cannot delete Supabase auth users without service role key)
+    try {
+      const existing = await pb.collection('profiles').getFirstListItem(`sb_id="${userId}"`);
+      const record = await pb.collection('profiles').update(existing.id, { is_active: false });
+      return mapRecord(record);
+    } catch(e) { throw e; }
   }
 };

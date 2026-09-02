@@ -13,7 +13,7 @@ export const AuthProvider = ({ children }) => {
   const [isAdmin, setIsAdmin] = useState(false);
   const initialized = useRef(false);
 
-  const SUPER_ADMINS = ['arslanshaukat@hotmail.com', 'info@gtintl.com.ph'];
+  const SUPER_ADMINS = ['arslanshaukat@hotmail.com'];
 
   const fetchProfile = useCallback(async (userId, userEmail) => {
     if (!userId) return null;
@@ -32,6 +32,10 @@ export const AuthProvider = ({ children }) => {
       }
       
       if (data) {
+        // Parse permissions if stored as JSON string
+        if (typeof data.permissions === 'string') {
+          try { data.permissions = JSON.parse(data.permissions || '{}'); } catch { data.permissions = {}; }
+        }
         setProfile(data);
         const isSuperAdmin = userEmail && SUPER_ADMINS.includes(userEmail);
         setIsAdmin(data.role === 'admin' || isSuperAdmin);
