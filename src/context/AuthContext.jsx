@@ -18,31 +18,31 @@ export const AuthProvider = ({ children }) => {
   const fetchProfile = useCallback(async (userId, userEmail) => {
     if (!userId) return null;
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, email, role, full_name, permissions')
-        .eq('id', userId)
-        .single();
-      
-      if (error) {
-        if (userEmail && SUPER_ADMINS.includes(userEmail)) {
-          setIsAdmin(true);
-        }
+      const records = await pb.collection('profiles').getFullList({
+        filter: `sb_id="${userId}"`,
+      });
+      const record = records[0];
+      if (!record) {
+        if (userEmail && SUPER_ADMINS.includes(userEmail)) setIsAdmin(true);
         return null;
       }
-      
-      if (data) {
-        // Parse permissions if stored as JSON string
-        if (typeof data.permissions === 'string') {
-          try { data.permissions = JSON.parse(data.permissions || '{}'); } catch { data.permissions = {}; }
-        }
-        setProfile(data);
-        const isSuperAdmin = userEmail && SUPER_ADMINS.includes(userEmail);
-        setIsAdmin(data.role === 'admin' || isSuperAdmin);
-        return data;
-      }
+      // Map PocketBase record to profile shape
+      const data = {
+        id: record.sb_id || record.id,
+        email: record.email,
+        role: record.role,
+        full_name: record.full_name,
+        permissions: typeof record.permissions === 'string'
+          ? (() => { try { return JSON.parse(record.permissions || '{}'); } catch { return {}; } })()
+          : (record.permissions || {})
+      };
+      setProfile(data);
+      const isSuperAdmin = userEmail && SUPER_ADMINS.includes(userEmail);
+      setIsAdmin(data.role === 'admin' || isSuperAdmin);
+      return data;
     } catch (e) {
       console.error('Profile sync failed:', e);
+      if (userEmail && SUPER_ADMINS.includes(userEmail)) setIsAdmin(true);
     }
     return null;
   }, []);
