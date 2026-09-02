@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
 import { toast } from 'react-toastify';
-import { supabase, initPocketBase } from '../supabase.js';
+import { supabase, initPocketBase, pb } from '../supabase.js';
 const AuthContext = createContext({});
 
 export const useAuth = () => useContext(AuthContext);
@@ -26,16 +26,22 @@ export const AuthProvider = ({ children }) => {
         if (userEmail && SUPER_ADMINS.includes(userEmail)) setIsAdmin(true);
         return null;
       }
+      // Parse permissions from JSON string
+      let parsedPermissions = {};
+      try {
+        parsedPermissions = typeof record.permissions === 'string'
+          ? JSON.parse(record.permissions || '{}')
+          : (record.permissions || {});
+      } catch(e) { parsedPermissions = {}; }
       // Map PocketBase record to profile shape
       const data = {
         id: record.sb_id || record.id,
         email: record.email,
         role: record.role,
         full_name: record.full_name,
-        permissions: typeof record.permissions === 'string'
-          ? (() => { try { return JSON.parse(record.permissions || '{}'); } catch { return {}; } })()
-          : (record.permissions || {})
+        permissions: parsedPermissions
       };
+      console.log('[PROFILE DEBUG2] parsed permissions:', parsedPermissions);
       setProfile(data);
       const isSuperAdmin = userEmail && SUPER_ADMINS.includes(userEmail);
       setIsAdmin(data.role === 'admin' || isSuperAdmin);

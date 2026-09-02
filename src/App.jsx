@@ -32,9 +32,11 @@ const HolidaySettings = lazy(() => import('./components/HolidaySettings'));
 const { FiAlertTriangle } = FiIcons;
 
 const RootRedirect = () => {
-  const { user } = useAuth();
-  if (user?.email === 'gtsubic@gmail.com') {
-    return <Navigate to="/attendance" replace />;
+  const { user, isAdmin, checkPermission } = useAuth();
+  if (!isAdmin) {
+    if (checkPermission('manage_employees')) return <ProtectedRoute><EmployeeList /></ProtectedRoute>;
+    if (checkPermission('manage_attendance')) return <Navigate to="/attendance" replace />;
+    if (checkPermission('manage_payroll')) return <Navigate to="/results" replace />;
   }
   return <ProtectedRoute><EmployeeList /></ProtectedRoute>;
 };
