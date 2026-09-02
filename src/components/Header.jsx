@@ -65,9 +65,6 @@ const Header = () => {
     { path: '/holidays', label: 'Holidays', icon: FiGift, permission: 'manage_payroll' },
     { path: '/payroll-summary', label: 'Payroll Sheet', icon: FiGrid, permission: 'manage_payroll' },
   ].filter(link => {
-    if (user?.email === 'gtsubic@gmail.com') {
-      return link.path === '/attendance';
-    }
     if (isAdmin) return true;
     return !!profile?.permissions?.[link.permission];
   });
@@ -84,7 +81,7 @@ const Header = () => {
                 <SafeIcon icon={FiMenu} className="text-2xl" />
               </button>
             )}
-            <Link to={user?.email === 'gtsubic@gmail.com' ? '/attendance' : '/'} className="flex items-center space-x-3 outline-none">
+            <Link to="/" className="flex items-center space-x-3 outline-none">
               <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-100">
                 <SafeIcon icon={FiCalculator} className="text-white text-xl md:text-2xl" />
               </div>
