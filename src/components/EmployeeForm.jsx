@@ -32,6 +32,7 @@ const EmployeeForm = () => {
     lateMinutes: '0', // will be recalculated from attendance
     undertimeMinutes: existingRecord?.undertime_minutes?.toString() || '0',
     overtimeMinutes: ((existingRecord?.overtime_hours || 0) * 60).toString(),
+    earlyStartMinutes: (existingRecord?.early_start_minutes || 0).toString(),
     otherAllowances: existingRecord?.allowances?.toString() || '0',
     allowanceDescription: existingRecord?.allowance_description || '',
     sssContribution: existingRecord?.sss_contribution?.toString() || '0',
@@ -81,6 +82,7 @@ const EmployeeForm = () => {
               halfDays: (stats.halfDaysPresent || 0).toString(),
               lateMinutes: (stats.totalLateMinutes || 0).toString(),
               overtimeMinutes: (stats.totalOvertimeMinutes || 0).toString(),
+              earlyStartMinutes: (stats.totalEarlyStartMinutes || 0).toString(),
               undertimeMinutes: (stats.totalUndertimeMinutes || 0).toString(),
               manualRegHolidays: (selectedEmployee.employee_type === 'Full Time') 
                 ? (stats.regularHolidaysPresent || 0).toString()
@@ -178,6 +180,7 @@ const EmployeeForm = () => {
         reg_holiday_pay: regHolidayPay,
         spec_holiday_pay: specHolidayPay,
         overtime_hours: round(Number(formData.overtimeMinutes || 0) / 60),
+        early_start_minutes: Number(formData.earlyStartMinutes || 0),
         overtime_pay: otPay,
         late_minutes: Number(formData.lateMinutes),
         late_deduction: lateDed,
@@ -268,6 +271,13 @@ const EmployeeForm = () => {
                     <div className="text-right relative z-10">
                       <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">OT Minutes</p>
                       <input type="number" value={formData.overtimeMinutes} onChange={(e) => setFormData(p => ({ ...p, overtimeMinutes: e.target.value }))} className="bg-transparent text-3xl font-black focus:outline-none w-24 text-right text-green-400 border-b-4 border-green-600/30" />
+                    </div>
+                  </div>
+                  <div className="flex justify-end mt-3">
+                    <div className="text-right relative z-10">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-1">ES Minutes</p>
+                      <p className="text-2xl font-black text-indigo-300">{formData.earlyStartMinutes || 0}</p>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500/50 mt-0.5">Early Start · Info Only</p>
                     </div>
                   </div>
 

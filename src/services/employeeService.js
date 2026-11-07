@@ -451,6 +451,7 @@ export const employeeService = {
       totalLateMinutes: 0,
       totalUndertimeMinutes: 0,
       totalOvertimeMinutes: 0,
+      totalEarlyStartMinutes: 0,
       thirteenthMonthDays: 0,
       totalRecords: attendance.length
     };
@@ -522,7 +523,9 @@ export const employeeService = {
       stats.totalUndertimeMinutes += (log.undertime_minutes || 0);
 
       if (isPresent) {
-        if (checkinMins < SHIFT_START) stats.totalOvertimeMinutes += (SHIFT_START - checkinMins);
+        // Early Start = minutes arrived before shift start (not OT, tracked separately)
+        if (checkinMins > 0 && checkinMins < SHIFT_START) stats.totalEarlyStartMinutes += (SHIFT_START - checkinMins);
+        // OT = only time worked AFTER shift end
         if (checkoutMins > SHIFT_END) stats.totalOvertimeMinutes += (checkoutMins - SHIFT_END);
       }
     });
